@@ -1,2 +1,2 @@
 # FogCutterLang
-A C++ lang made for Java
+A lang made for Java and a Minecaraft Mod
