@@ -62,6 +62,7 @@ These will also be available for Doubles with the prefix `Dub`; such as `DubAdd`
 
 **THIS CAN AND WILL LIKELY CHANGE**
 # Architecture:
+`TODO:`
 The emulated CPU will be based on Von Neumann Architecture, where the program and memory exist in a shared space.
 There will also be 4 active registers for the CPU to use, r0, r1, r2, and r3;
 potently more directly writeable register-like spaces for specific actions (such as the Program Counter, Stack Pointer, etc).
