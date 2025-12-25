@@ -2,7 +2,7 @@
 - Most things can be abstracted away, since this is an emulation of a real CPU, not a real CPU
 - Having the program and R/W memory share a space seems dangerous but also like an interesting idea
 - Likely have 4 registers (r0-3)
-- Call Stack has a defined space, if it overflows this it gets a StackOverFlow
+-ram Call Stack has a defined space in ram, if it overflows this it gets a StackOverFlow
 - May have specific outputs/registers (rather than memory space) to write things to files.
 This is to enforce file safety and checking
 - Will have an ALU that uses r0-1 for math, and r2 for outputs
