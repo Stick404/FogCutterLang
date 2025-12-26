@@ -24,8 +24,7 @@ This is to enforce file safety and checking
 
 For extra non-standard registers:
 - rC, an r/w and the Program Counter used for directly setting the memory section to read from
-- rE, a read-only register that is used for storing error codes
-- rI0-2, r/w registers used for running the next instructions (Op, Arg 1, Arg 2)
+- rE, an r/w register that is used for storing error codes
 - rS, an r/w Stack Pointer register, used for the Call Stack
 - rR, an r/w pointer to the Error Return, the code in memory that will be run based on an error
 - rT, an r/w number that will tell the VM when to tick next in either Milliseconds or Ticks
@@ -66,7 +65,23 @@ These will also be available for Doubles with the prefix `Dub`; such as `DubAdd`
 The emulated CPU will be based on Von Neumann Architecture, where the program and memory exist in a shared space.
 There will also be 4 active registers for the CPU to use, r0, r1, r2, and r3;
 potently more directly writeable register-like spaces for specific actions (such as the Program Counter, Stack Pointer, etc).
-As well, the Function Call Stack will be directly in memory, where if it leaves the allocated bounds; errors.
+As well, the Function Call Stack will be directly in memory, where if it leaves the allocated bounds; it errors the program.
+Errors are handled via 2 custom registers, rE and rR.
+rE holds the Error Code of the program, and rR holds a pointer to the section of the program that holds error handling code.
+If an error were to happen in rR, the VM will shutdown the program; however more will be explained later.
+
+
+Each register has a direct use, r0-1 is used by both the ALU for math, and by Jumps for comparisons.
+r2 is used by the ALU to write the output of math operations.
+r3 is the final register, and used by Jumps to select the section in memory to jump to.
+Each of the r0-3 registers are fully read and writable.
+As stated before, there is also more registers, they are as follows.
+rC, which is the Program **C**ounter (read/writeable), and states where in memory the program should execute from; this is incremented after every CPU tick.
+rE, which is the **E**rror register (read/writeable), and states the error code of the program; if the rE is 0, the program keeps running; if the rE is 1, the program cleanly finishes; if the rE is not either 0 or 1, it jumps the code to the next register.
+rR, which is the Error **R**eturn (read/writeable), this points to a section in memory where the program should go to if an error is reached; this section of code is not for removing the error, but to safely shutdown the program. If an error were to happen after rR has been triggered, the VM will end the program.
+Moving from error handling, rS is the **S**tack Pointer (read/writeable), when Opcode `Call` is used, this register has the current location of the program saved to its memory address pointer, then it increments.
+If Opcode `Ret` is used, the current location that rS is pointing to is used to set the rC, then rS is decremented a memory slot.
+Finally, for Registers, rT which is the **T**ick Register (read/writeable), this tells the VM how many units of time the program should sleep before running again, baring any errors.
 
 
 All of this is inspired by Stephen Gream's [articles](https://www.stephengream.com/writing-a-vm-part-one/) on writing a VM with some modifications
