@@ -39,7 +39,7 @@ For extra non-standard registers:
 
 ### Basic/Planed Instruction Set:
 - `Mov, x1, x2`, Moves value x1 to x2, x2 is always a writable space
-- Math Ops, preforms the stated action. All take x1 or optionally x2, and outputs into r2.
+- Math Ops, preforms the stated action and outputs into r2.
 These will also be available for Doubles with the prefix `Dub`; such as `DubAdd`, `DubDiv`, etc. Doubles will be treated as Longs and vice versa if the wrong Op is used
   - `Add, x1, x2` Adds x1 and x2 together
   - `Sub, x1, x2` Subs x2 from x1

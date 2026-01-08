@@ -355,11 +355,30 @@ mod tests {
     }
 
     #[test]
-    fn program_run_add_WIP() { // Tests the Add OpCode
+    fn program_math() { // Tests the Math OpCodes
         let mut vm = VmState::default();
         let program: Vec<u8> = vec![
+            1, MD1|MR2, 2, 0, // Moves value 1 to r0
+            1, MD1|MR2, 3, 1, // Moves value 3 to r1
 
+            2, MR1|MR2, 0, 1, // Adds values in r0 r1 to r2
+            1, MR1|MM2, 2, 0, // Moves r2 to mem0
+
+            3, MR1|MR2, 1, 0, // Sub values in r0 r1 to r2
+            1, MR1|MM2, 2, 1, // Moves r2 to mem1
+
+            4, MR1|MR2, 1, 0, // Mults values in r0 r1 to r2
+            1, MR1|MM2, 2, 2, // Moves r2 to mem2
+
+            5, MR1|MR2, 1, 0, // Divs values in r0 r1 to r2
+            1, MR1|MM2, 2, 3, // Moves r2 to mem3
+
+            1, MD1|MR2, 1, REG_RE // Moves value 1 to rE, successfully ending the program
         ];
-        //assert!(vm.run_program(&program));
+        assert!(vm.run_program(&program));
+        assert_eq!(vm.read_memory(0, &Size::Byte), 5); // Adds to 5
+        assert_eq!(vm.read_memory(1, &Size::Byte), 1); // Subs to 1
+        assert_eq!(vm.read_memory(2, &Size::Byte), 6); // Muts to 6
+        assert_eq!(vm.read_memory(3, &Size::Byte), 1); // Divs to 1?
     }
 }
