@@ -97,3 +97,30 @@ pub enum Size {
     Int, // u32
     Long, // u64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_read_write() {
+        let mut mem = VmState::default();
+        let mut numb: u64;
+
+        mem.write_memory(0, 255, Size::Byte);
+        numb = mem.read_memory(0, Size::Byte);
+        assert_eq!(numb, 255);
+
+        mem.write_memory(0, 65535, Size::Word);
+        numb = mem.read_memory(0, Size::Word);
+        assert_eq!(numb, 65535);
+        
+        mem.write_memory(0, 4294967295, Size::Int);
+        numb = mem.read_memory(0, Size::Int);  
+        assert_eq!(numb, 4294967295);
+
+        mem.write_memory(0, 18446744073709551615, Size::Long);
+        numb = mem.read_memory(0, Size::Long);
+        assert_eq!(numb, 18446744073709551615);
+    }
+}
