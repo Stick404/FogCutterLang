@@ -53,6 +53,7 @@ These will also be available for Doubles with the prefix `Dub`; such as `DubAdd`
   - `JmpEq, x1, x2` Jumps if x1 is equal to x2
   - `JumpGrEq, x1, x2` Jumps if x1 is equal too/greater than x2
   - `JumpLsEq, x1, x2` Jumps if x1 is equal too/less than x2
+  - `JmpNt, x1, x2` Jumps if x1 is not equal to x2
 - `NoOp`, Preforms no action. Ignores x1, x2
 - `Call, x1`, Adds the current location to the Stack Pointer, and jumps unconditionally to the location in x1. Ignores x2
 - `Ret`, Pops a location off of the Stack Pointer, and moves the program to there. Ignores x1 and x2

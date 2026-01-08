@@ -2,8 +2,8 @@
 A lang made for Java and a Minecaraft Mod
 
 ## Current Timeline:
-* Finish Basic Planning ☐
-* Protype VM ☐
+* Finish Basic Planning ☑
+* Protype VM ☑
 * Basic Assembler ☐
 * Syscalls ☐
 * Very Tiny C to FogCutter Compiler ☐

@@ -1,0 +1,201 @@
+#[cfg(test)]
+mod tests {
+    use crate::vm_v2::*;
+
+    #[test]
+    fn memory_read_write() {
+        let mut mem = VmState::default();
+
+        mem.write_memory(0, 255, Size::Byte);
+        assert_eq!(mem.read_memory(0, &Size::Byte), 255);
+
+        mem.write_memory(0, 65535, Size::Word);
+        assert_eq!(mem.read_memory(0, &Size::Word), 65535);
+        
+        mem.write_memory(0, 4294967295, Size::Int);
+        assert_eq!(mem.read_memory(0, &Size::Int), 4294967295);
+
+        mem.write_memory(0, 18446744073709551615, Size::Long);
+        assert_eq!(mem.read_memory(0, &Size::Long), 18446744073709551615);
+    }
+
+    #[test]
+    fn program_run_mov() { // Tests the Mov OpCode
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2, 1, 0, // Moves value 1 to r0
+            1, MR1|MR2, 0, 1, // Moves r0 to r1
+            1, MR1|MM2, 1, 0, // Moves r1 to memory 0
+            1, MM1|MR2, 0, 2, // Moves mem0 to r2
+            1, MR1|MR2, 1, REG_RE // Moves r1 to rE, successfully ending the program
+        ];
+        assert!(!vm.run_program(&program).is_err());
+        assert_eq!(vm.read_register(0), 1);
+        assert_eq!(vm.read_register(1), 1);
+        assert_eq!(vm.read_register(2), 1);
+        assert_eq!(vm.read_memory(0, &Size::Byte), 1);
+    }
+
+    #[test]
+    fn program_sizes(){ // Tests the Sizes
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2|SW1, 0b11111111, 0b11111111, 0, // Moves value word max to r0
+            1, MR1|MM2|SW1, 0, 5, // Moves r0 to mem5
+
+            1, MD1|MR2|SI1, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 1, // Moves value int max to r1
+            1, MR1|MM2|SI1, 1, 10, // Moves r1 to mem10
+
+            1, MD1|MR2|SL1, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 2, // Moves value long max to r2
+            1, MR1|MM2|SL1, 2, 15, // Moves r2 to mem15
+
+            1, MD1|MR2, 1, REG_RE // Moves value 1 to rE, successfully ending the program
+        ];
+        assert!(!vm.run_program(&program).is_err());
+        assert_eq!(vm.read_register(0), 65535);
+        assert_eq!(vm.read_register(1), 4294967295);
+        assert_eq!(vm.read_register(2), 18446744073709551615);
+
+        assert_eq!(vm.read_memory(5, &Size::Word), 65535);
+        assert_eq!(vm.read_memory(10, &Size::Int), 4294967295);
+        assert_eq!(vm.read_memory(15, &Size::Long), 18446744073709551615);
+    }
+
+    #[test]
+    fn program_math() { // Tests the Math OpCodes
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2, 2, 0, // Moves value 1 to r0
+            1, MD1|MR2, 3, 1, // Moves value 3 to r1
+
+            2, MR1|MR2, 0, 1, // Adds values in r0 r1 to r2
+            1, MR1|MM2, 2, 0, // Moves r2 to mem0
+
+            3, MR1|MR2, 1, 0, // Sub values in r0 r1 to r2
+            1, MR1|MM2, 2, 1, // Moves r2 to mem1
+
+            4, MR1|MR2, 1, 0, // Mults values in r0 r1 to r2
+            1, MR1|MM2, 2, 2, // Moves r2 to mem2
+
+            5, MR1|MR2, 1, 0, // Divs values in r0 r1 to r2
+            1, MR1|MM2, 2, 3, // Moves r2 to mem3
+
+            1, MD1|MR2, 1, REG_RE // Moves value 1 to rE, successfully ending the program
+        ];
+        assert!(!vm.run_program(&program).is_err());
+        assert_eq!(vm.read_memory(0, &Size::Byte), 5); // Adds to 5
+        assert_eq!(vm.read_memory(1, &Size::Byte), 1); // Subs to 1
+        assert_eq!(vm.read_memory(2, &Size::Byte), 6); // Muts to 6
+        assert_eq!(vm.read_memory(3, &Size::Byte), 1); // Divs to 1
+    }
+
+    #[test]
+    fn program_jmp() {
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2, 1, 0, // Moves value 1 ro r0
+            1, MD1|MR2, 1, 1, // Moves value 1 ro r1
+            1, MD1|MR2, 128+20, 3, // Moves value 128+16 to r0
+            6, MR1|MR1, 0, 0, // Jmps to where r3 is
+            0, 0, 0, 0, // A "brick wall" to crash the program incase of not jumping
+            1, MD1|MR2, 255, 3, // Will crash the program if it jumps
+            7, MR1|MR2, 0, 1,
+            8, MR1|MR2, 0, 1,
+
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+        assert!(!vm.run_program(&program).is_err());
+    }
+    
+    #[test]
+    fn program_float_math() {
+        let float1: f64 = 1.0;
+        let float2: f64 = 2.5;
+
+        let f1 = d2l(float1).to_le_bytes();
+        let f2 = d2l(float2).to_le_bytes();
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2|SL1, f1[0] ,f1[1], f1[2], f1[3], f1[4], f1[5], f1[6], f1[7], 0,
+            1, MD1|MR2|SL1, f2[0] ,f2[1], f2[2], f2[3], f2[4], f2[5], f2[6], f2[7], 1,
+
+            13, MR1|MR2, 0, 1, // Float Add
+            1, MR1|MM2|SL1, 2, 0, // Moves r2 to mem0
+
+            14, MR1|MR2, 1, 0, // Float Sub
+            1, MR1|MM2|SL1, 2, 8, // Moves r2 to mem8
+            
+            15, MR1|MR2, 0, 1, // Float Mut
+            1, MR1|MM2|SL1, 2, 16, // Moves r2 to mem16
+
+            16, MR1|MR2, 0, 1, // Float Div
+            1, MR1|MM2|SL1, 2, 24, // Moves r2 to mem16
+
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+                
+        assert!(!vm.run_program(&program).is_err());
+        assert_eq!(vm.read_memory(0, &Size::Long), d2l(float1 + float2)); // Add
+        assert_eq!(vm.read_memory(8, &Size::Long), d2l(float2 - float1)); // Sub
+        assert_eq!(vm.read_memory(16, &Size::Long), d2l(float1 * float2)); // Mut
+        assert_eq!(vm.read_memory(24, &Size::Long), d2l(float1 / float2)); // Div
+    }
+
+    #[test]
+    fn program_basic_stack() {
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MR2, 1, 0, // Moves value 1 to r0
+            17, MD1, 5, 0, // Pushs 5
+            17, MR1, 0, 0, // Pushs reg 0
+            18, MD1, 2, 0, // Pops to r2
+            18, MM2, 0, 0, // Pops to mem0
+
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+
+        assert!(!vm.run_program(&program).is_err());
+        assert_eq!(vm.read_register(0), 1);
+        assert_eq!(vm.read_memory(0, &Size::Byte), 5);
+    }
+
+    #[test]
+    fn program_call_stack() {
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MM2, 1, 0, // Moves value 1 to mem0
+            1, MD1|MM2, MD1|MR2, 1, // Moves value MD1|MR2 to mem1
+            1, MD1|MM2, 1, 2, // Moves value 1 to mem2
+            1, MD1|MM2, REG_RE, 3, // Moves value REG_RE to mem3
+            // Assembles a self-made end
+            19, MD1, 0, 0, // "calls" function 0
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+
+        assert!(!vm.run_program(&program).is_err());
+        match vm.peak_stack() { // Checks to see if there is a address on the stack
+            None => assert!(false),
+            Some(x) => assert_eq!(x, 148)
+        }
+    }
+
+    #[test]
+    fn program_call_stack_2() {
+        let mut vm = VmState::default();
+        let program: Vec<u8> = vec![
+            1, MD1|MM2, 20, 0, // Moves value 20 to mem0
+            1, MD1|MM2, 0, 1, // Moves value 0 to mem1
+            1, MD1|MM2, 0, 2, // Moves value 0 to mem2
+            1, MD1|MM2, 0, 3, // Moves value 0 to mem3
+            // Assembles a self-made return
+            19, MD1, 0, 0, // "calls" function 0
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+        
+        assert!(!vm.run_program(&program).is_err());
+        match vm.peak_stack() { // Checks to see if there is no address on the stack
+            None => {} 
+            Some(_x) => assert!(false),
+        }
+    }
+}
