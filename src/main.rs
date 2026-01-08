@@ -5,15 +5,19 @@ fn main() {
     let mut mem = Memory::default();
     let program: Vec<u8> = vec![0b00000001, 0b01010110, 0b00000000, 0b00000111,
                                 0b00000001, 0b01011010, 0b00000001, 0b00000000,
-                                0b00000010, 0b01010110, 0b00000001, 0b00000001];
+                                0b00000010, 0b01010110, 0b00000001, 0b00000001,
+                                0b00000001, 0b01011000, 0b00000000, 0b00000001,
+                                0b00000001, 0b01011010, 0b00000010, 0b00000001,
+                                0b00000011, 0b01010110, 0b00000010, 0b00000110];
 
     run_program(program, &mut mem);
     println!("{mem:?}");
 }
 
 // Opcodes required:
-// MOV (00000001) [x1, x2], (move) moves a value from one location x1 to location x2
+// MOV (00000001) [x1, x2], (move) moves a value from one location x2 to location x1
 // ADDUN (00000010) [x1, x2], (add unsigned) adds the value from location x2 to location x1, overwrites x1
+// SUBUN (00000011) [x1, x2], (subtract unsigned) subtracts the value from location x2 from location x1, overwrites x1
 
 fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
     if program.len() % 2 != 0 || program.len() < 2 {
@@ -37,35 +41,34 @@ fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
     for (i, val) in program.iter().enumerate() {
         if i % (x1_size + x2_size +2) as usize == 0 {
             op_code = *val;
-            println!("OpCode is: {op_code}");
             just_checked_op = true;
         } else if just_checked_op {
             just_checked_op = false;
             let val: u8 = *val;
 
-            println!("ARGS");
+            //println!("ARGS");
             x1_address_mode = val & 0b00000011;
             x2_address_mode = (val & 0b00001100) >> 2;
 
             x1_size = (val & 0b00110000) >> 4;
             x2_size = (val & 0b11000000) >> 6;
-            println!("x1: adress mode: {x1_address_mode}, byte size: {x1_size}");
-            println!("x2: adress mode: {x2_address_mode}, byte size: {x2_size}");
+            //println!("x1: adress mode: {x1_address_mode}, byte size: {x1_size}");
+            //println!("x2: adress mode: {x2_address_mode}, byte size: {x2_size}");
         } else if x1_byte_count <= x1_size.into() && x2_byte_count <= x2_size.into() {
-            println!("reading bytes!");
+            //println!("reading bytes!");
             let val: u8 = *val;
             if x1_byte_count < x1_size.into() {
-               println!("x1 value: {val}");
+               //println!("x1 value: {val}");
                x1_value = x1_value | ((val as u64) << x1_byte_count); 
                x1_byte_count += 1;
             } else if x2_byte_count < x2_size.into() {
-                println!("x2 value: {val}");
+                //println!("x2 value: {val}");
                x2_value = x2_value | ((val as u64) << x2_byte_count); 
                x2_byte_count += 1;
             }
 
             if x1_byte_count == x1_size.into() && x2_byte_count == x2_size.into() {
-                println!("Running OpCode!");
+                //println!("Running OpCode!");
                 if !use_op_code(mem, op_code, x1_value, x2_value, x1_address_mode, x2_address_mode) {
                     return false;
                 }
@@ -97,12 +100,17 @@ fn use_op_code(mem: &mut Memory, op_code: u8, x1: u64, x2: u64, x1_address_mode:
                 _ => return false
             };
             return true;
-        }
-
-        2 => {
+        } 2 => {
             match x1_address_mode {
                 0 => { mem.write_memory(x1 as usize, mem.get_memory(x1 as usize) + x2_value as u8) },
                 2 => { mem.write_registor(x1 as usize, mem.get_register(x1 as usize) + x2_value as u8) },
+                _ => return false
+            };
+            return true;
+        } 3 => {
+            match x1_address_mode {
+                0 => { mem.write_memory(x1 as usize, mem.get_memory(x1 as usize) - x2_value as u8) },
+                2 => { mem.write_registor(x1 as usize, mem.get_register(x1 as usize) - x2_value as u8) },
                 _ => return false
             };
             return true;
@@ -128,6 +136,7 @@ impl Memory {
     }
 
     fn write_memory(&mut self, slot: usize, value: u8){ // TODO: make this do fucky bit shifting stuff, and take an u64
+        println!("writting to memory slot {slot} with {value}");
         self.memory[slot] = value;
     }
 
