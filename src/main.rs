@@ -13,10 +13,10 @@ fn main() {
 
 // Opcodes required:
 // MOV (00000001) [x1, x2], (move) moves a value from one location x1 to location x2
-// ADDUN (00000010) [x1, x2], (add unsigned) adds the value from location x1 to location x2, overwrites x2
+// ADDUN (00000010) [x1, x2], (add unsigned) adds the value from location x2 to location x1, overwrites x1
 
 fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
-    if (program.len() % 2 != 0 || program.len() < 2) {
+    if program.len() % 2 != 0 || program.len() < 2 {
         return false; // Invalid size
     }
     
@@ -31,15 +31,15 @@ fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
 
     let mut x1_value: u64 = 0;
     let mut x2_value: u64 = 0;
-    let mut x1_byte_count: u64 = 0;
-    let mut x2_byte_count: u64 = 0;
+    let mut x1_byte_count: u8 = 0;
+    let mut x2_byte_count: u8 = 0;
 
     for (i, val) in program.iter().enumerate() {
-        if (i % (x1_size + x2_size +2) as usize == 0) {
+        if i % (x1_size + x2_size +2) as usize == 0 {
             op_code = *val;
             println!("OpCode is: {op_code}");
             just_checked_op = true;
-        } else if (just_checked_op) {
+        } else if just_checked_op {
             just_checked_op = false;
             let val: u8 = *val;
 
@@ -51,22 +51,22 @@ fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
             x2_size = (val & 0b11000000) >> 6;
             println!("x1: adress mode: {x1_address_mode}, byte size: {x1_size}");
             println!("x2: adress mode: {x2_address_mode}, byte size: {x2_size}");
-        } else if (x1_byte_count <= x1_size.into() && x2_byte_count <= x2_size.into()) {
+        } else if x1_byte_count <= x1_size.into() && x2_byte_count <= x2_size.into() {
             println!("reading bytes!");
             let val: u8 = *val;
-            if (x1_byte_count < x1_size.into()){
+            if x1_byte_count < x1_size.into() {
                println!("x1 value: {val}");
                x1_value = x1_value | ((val as u64) << x1_byte_count); 
                x1_byte_count += 1;
-            } else if (x2_byte_count < x2_size.into()){
+            } else if x2_byte_count < x2_size.into() {
                 println!("x2 value: {val}");
                x2_value = x2_value | ((val as u64) << x2_byte_count); 
                x2_byte_count += 1;
             }
 
-            if (x1_byte_count == x1_size.into() && x2_byte_count == x2_size.into()) {
+            if x1_byte_count == x1_size.into() && x2_byte_count == x2_size.into() {
                 println!("Running OpCode!");
-                if (!use_op_code(mem, op_code, x1_value, x2_value, x1_address_mode, x2_address_mode)) {
+                if !use_op_code(mem, op_code, x1_value, x2_value, x1_address_mode, x2_address_mode) {
                     return false;
                 }
 
