@@ -1,0 +1,43 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug unit tests in executable 'fog_cutter_lang'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin=fog_cutter_lang"
+                ]
+            }
+        },
+    
+        {
+            "name": "Debug executable 'fog_cutter_lang'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin=fog_cutter_lang"
+                ]
+            },
+            "args": []
+        },
+        {
+            "name": "Debug unit tests in executable 'fog_cutter_lang'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin=fog_cutter_lang"
+                ]
+            }
+        }
+    ]
+}

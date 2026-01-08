@@ -3,24 +3,24 @@
 - Most things can be abstracted away, since this is an emulation of a real CPU, not a real CPU
 - Having the program and R/W memory share a space seems dangerous but also like an interesting idea
 - Likely have 4 registers (r0-3)
--ram Call Stack has a defined space in ram, if it overflows this it gets a StackOverFlow
+- Ram Call Stack has a defined space in ram, if it overflows this it gets a StackOverFlow
 - May have specific outputs/registers (rather than memory space) to write things to files.
 This is to enforce file safety and checking
-- Will have an ALU that uses r0-1 for math, and r2 for outputs
-- Jmp and methods like it will use r0-1 and r3
+- ~~Will have an ALU that uses r0-1 for math, and r2 for outputs~~
+- ~~Jmp and methods like it will use r0-1 and r3~~
 - The system will be signed 64bit based
-- Native support for doubles and longs only
+- ~~Native support for doubles and longs only~~
 - Overflows will be caught, and will jump to a specific memory slot for error handling/crashs(maybe)
 - Errors will write the error code into a register
 - An "error" of 1 written to the error register ends a program without calling the crash code
 - No error handling code will just end the program with the code
-- Registers will be addressed with `r"string"` in the bytecode
+- ~~Registers will be addressed with `r"string"` in the bytecode~~
 
 ### Full list of Registers and what they do:
-- r0, writable register used for math/comparisons
-- r1, writable register used for math/comparisons
-- r2, writable register that is the output of the ALU
-- r3, an extra register used for Jump actions
+- r0, r/w register ~~used for math/comparisons~~
+- r1, r/w register ~~used for math/comparisons~~
+- r2, r/w register that is the output of the ALU
+- r3, r/w register ~~used for Jump actions~~
 
 For extra non-standard registers:
 - rC, an r/w and the Program Counter used for directly setting the memory section to read from
@@ -38,17 +38,15 @@ For extra non-standard registers:
 - Start the next Clock Cycle
 
 ### Basic/Planed Instruction Set:
-- `Mov, x1, x2`, Moves value x1 to x2, x1 be either value or register, x2 is always a register
-- `MovMemIn, x1, x2`, Moves a value from x1 register or value into memory at x2
-- `MovMemOut, x1, x2`, Moves a value from memory at x1 register or value into x2 registry
-- ALU math Ops, preforms the stated action. All take x1 x2, and outputs into r2. If x1 or x2 is empty (0) it pulls from r0 and r1. Always outputs to r2.
+- `Mov, x1, x2`, Moves value x1 to x2, x2 is always a writable space
+- Math Ops, preforms the stated action. All take x1 or optionally x2, and outputs into r2.
 These will also be available for Doubles with the prefix `Dub`; such as `DubAdd`, `DubDiv`, etc. Doubles will be treated as Longs and vice versa if the wrong Op is used
   - `Add, x1, x2` Adds x1 and x2 together
   - `Sub, x1, x2` Subs x2 from x1
   - `Mul, x1, x2` Mults x1 by x2
   - `Div, x1, x2` Dives x1 by x2
-  - `Abs, x1` Gets the absolute of x1. Ignores x2
-- Jump Ops, preforms the stated action. All take x1 x2, and jumps to the location in r3. If x1 or x2 is empty (is 0) it pulls from r0 and r1 respectively
+  - ~~`Abs, x1` Gets the absolute of x1. Ignores x2~~
+- Jump Ops, preforms the stated action. All take x1 x2, and jumps to the location in r3
   - `Jmp` Jumps directly, no condition. Ignores x1, x2
   - `JmpGr, x1, x2` Jumps if x1 is greater than x2
   - `JmpLs, x1, x2` Jumps if x1 is less than x2

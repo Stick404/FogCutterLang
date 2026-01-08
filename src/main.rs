@@ -1,30 +1,31 @@
-use crate::vm::{vm_v1, vm_v2};
+use crate::vm::{vm_v2};
 
 pub mod vm;
 
 fn main() {
     println!("Hello world!");
+    
     let mut mem = vm_v2::VmState::default();
 
-    let mut numb: u64 = 0;
+    let mut numb: u64;
 
     mem.write_memory(0, 255, vm_v2::Size::Byte);
-    numb = mem.read_memory(0, vm_v2::Size::Byte);
+    numb = mem.read_memory(0, &vm_v2::Size::Byte);
     println!("{mem:?}");
     println!("`numb` is: {numb}");
 
     mem.write_memory(0, 65535, vm_v2::Size::Word);
-    numb = mem.read_memory(0, vm_v2::Size::Word);
+    numb = mem.read_memory(0, &vm_v2::Size::Word);
     println!("{mem:?}");
     println!("`numb` is: {numb}");
     
     mem.write_memory(0, 65535, vm_v2::Size::Int);
-    numb = mem.read_memory(0, vm_v2::Size::Int);
+    numb = mem.read_memory(0, &vm_v2::Size::Int);
     println!("{mem:?}");
     println!("`numb` is: {numb}");
 
     mem.write_memory(0, 18446744073709551615, vm_v2::Size::Long);
-    numb = mem.read_memory(0, vm_v2::Size::Long);
+    numb = mem.read_memory(0, &vm_v2::Size::Long);
     println!("{mem:?}");
     println!("`numb` is: {numb}");
 
