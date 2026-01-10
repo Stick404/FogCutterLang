@@ -22,50 +22,59 @@ pub static REG_RS: u8 = 5;
 
 #[derive(PartialEq, Debug)]
 pub struct VmState {
+    // Memory is layed out like: General Memory, Stack Location, Program Location
     memory: Vec<u8>,
-    stack: Vec<u64>,
-    stack_limit: usize,
-    program_space: usize, //128+ is used for program space
+    pub stack_location: u64,
+    pub program_location: u64,
     //[0]:r0 [1]:r1 [2]:r2 [3]:r3 [4]:rC [5]:rS [6]:rE [7]:rR [8]:rT
-    // Un-used: rS, ~rE, rR, rT
+    // Un-used: ~rE, rR, rT
     registers: [u64; 9],
-    running: bool,
+    pub op_limit: u64,
+    ops_ran: u64,
+    pub running: bool,
 }
 
 impl VmState {
-    fn new(max_memory: usize, max_stack: usize, program_space: usize) -> Self {
+    pub fn new(max_memory: u64, max_stack: u64, max_program: u64, op_limit: u64) -> Self {
         return VmState {
             memory: {
                 let mut vec: Vec<u8> = Vec::new();
-                for _ in 0..max_memory {
+                for _ in 0..(max_memory + max_program + max_stack) {
                     vec.push(0);
                 }
                 vec
             },
-            stack: Vec::with_capacity(max_stack),
-            stack_limit: max_stack,
+            stack_location: max_memory,
+            program_location: max_stack+max_memory,
 
-            registers: [0, 0, 0, 0, program_space as u64, 0, 0, 0, 0],
-            program_space: program_space,
+            registers: [0, 0, 0, 0, max_stack+max_memory, max_memory, 0, 0, 0],
+            op_limit,
+            ops_ran: 0,
             running: false
         };
     }
 
     fn read_inc_memory(&self, slot: usize, size: &Size, count: &mut u64, mode: &AddressMode) -> u64 {
-        match mode { // TODO: Maybe add Memory here? So we can specify the address size?
-            AddressMode::Direct => { match size {
-                    Size::Byte => *count += 1,
-                    Size::Word => *count += 2,
-                    Size::Int => *count += 4,
-                    Size::Long => *count += 8,
-                };
+        match mode {
+            AddressMode::Direct => {
+                (*count) += size.get_size() as u64;
                 return self.read_memory(slot, size);
             }
             AddressMode::Register => {*count += 1; return self.read_memory(slot, &Size::Byte);},
+            // TODO: Add in the Bus
+            AddressMode::Bus => {*count += 1; return self.read_memory_addressed(slot, size, mode)}
             _ => *count += 1,
 
         }
         return self.read_memory(slot, size);
+    }
+
+    pub fn read_memory_addressed(&self, slot: usize, size: &Size, mode: &AddressMode) -> u64 {
+        return match mode {
+            AddressMode::Memory => self.read_memory(slot, size),
+            AddressMode::Bus => 1, // TODO: Make this read from the real bus
+            _ => 0
+        }
     }
     
     pub fn read_memory(&self, slot: usize, size: &Size) -> u64 {
@@ -97,6 +106,7 @@ impl VmState {
         }
         return ret;
     }
+
     fn read_mem_safe(&self, slot: usize) -> u8 {
         return match self.memory.get(slot) {
             None => 0,
@@ -104,7 +114,7 @@ impl VmState {
         }
     }
 
-    pub fn write_memory(&mut self, slot: usize, value: u64, size: Size){
+    pub fn write_memory(&mut self, slot: usize, value: u64, size: &Size){
         //println!("writting to memory slot {slot} with {value} as {size:?}");
         match size {
             Size::Byte => {
@@ -141,13 +151,40 @@ impl VmState {
         }
     }
 
-    pub fn peak_stack(&self) -> Option<u64> {
-        return if self.stack.len() == 0 {
+    pub fn peak_stack(&self, size: &Size) -> Option<u64> {
+        let mut x = self.read_register(REG_RS as usize);
+        return if (x - size.get_size() as u64) < self.stack_location {
             Option::None
         } else {
-            Option::Some(self.stack[self.stack.len() -1])
+            x = x - size.get_size() as u64;
+            Option::Some(self.read_memory(x as usize, size))
         }
     }
+
+    pub fn pop_stack(&mut self, size: &Size) -> Result<u64, &'static str>{
+        let mut x = self.read_register(REG_RS as usize);
+        return if (x - size.get_size() as u64) < self.stack_location {
+            Result::Err("StackUnderflow")
+        } else {
+            x = x - size.get_size() as u64;
+            self.write_register(REG_RS as usize, x as u64);
+            let ret = Result::Ok(self.read_memory(x as usize, size));
+            self.write_memory(x as usize, 0, size);
+            return ret;
+        }
+    }
+
+    pub fn push_stack(&mut self, value: u64, size: &Size) -> Result<(), &'static str> {
+        let x = self.read_register(REG_RS as usize);
+        return if (x + size.get_size() as u64) > self.program_location {
+            Result::Err("StackOverflow")
+        } else {
+            self.write_register(REG_RS as usize, x + size.get_size() as u64);
+            self.write_memory(x as usize, value, size);
+            Result::Ok(())
+        }
+    }
+    
 
     pub fn read_register(&self, register: usize) -> u64 {
         return match self.registers.get(register) {
@@ -164,18 +201,17 @@ impl VmState {
     }
 
     pub fn write_program(&mut self, program: &Vec<u8>) -> Result<(), &'static str> {
-        if program.iter().size_hint().0 > 120 {
-            return Result::Err("TooLarge"); //TODO: make the program cap larger/changable
+        if program.len() > (self.memory.len() as u64 - self.program_location) as usize {
+            return Result::Err("TooLarge");
         }
-        let mut i: usize = 0;
+        let mut i: u64 = 0;
         for byte in program.iter() {
-            self.memory[self.program_space +i] = *byte;
+            self.memory[(self.program_location +i) as usize] = *byte;
             i += 1;
         }
         return Result::Ok(());
     }
 
-    // TODO: Make these `bool`s into Result<(), &'static str> for better errors
     pub fn run_program(&mut self, program: &Vec<u8>) -> Result<(), &'static str> {
         let x= self.write_program(program);
         if x.is_err(){
@@ -192,14 +228,14 @@ impl VmState {
             println!("count: {local_count}");
 
             let op_code: u8 = match self.read_byte(local_count as usize) {
-                Result::Err(_x) => {self.write_register(REG_RE as usize, 2); return Result::Err("Ended wrongly");} //Error Code 2: Ended wrongly!
+                Result::Err(_x) => {self.write_register(REG_RE as usize, 2); return Result::Err("EndedWrongly");} //Error Code 2: Ended wrongly!
                 Result::Ok(x) => x
             };
             println!("op code: {op_code}");
             local_count += 1;
             
             let description: u8 = match self.read_byte(local_count as usize) {
-                Result::Err(_x) => {self.write_register(REG_RE as usize, 2); return Result::Err("Ended wrongly");} //Error Code 2: Ended wrongly!
+                Result::Err(_x) => {self.write_register(REG_RE as usize, 2); return Result::Err("EndedWrongly");} //Error Code 2: Ended wrongly!
                 Result::Ok(x) => x
             };
             local_count += 1;
@@ -208,16 +244,16 @@ impl VmState {
                 0 => AddressMode::Memory,
                 1 => AddressMode::Direct,
                 2 => AddressMode::Register,
-                3 => AddressMode::UNUSED,
-                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("Could not parse description");},  //Error Code 3: Could not parse description!
+                3 => AddressMode::Bus,
+                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("DescriptionError");},  //Error Code 3: Could not parse description!
             };
 
             let x2_mode = match (description & 0b1100) >> 2 {
                 0 => AddressMode::Memory,
                 1 => AddressMode::Direct,
                 2 => AddressMode::Register,
-                3 => AddressMode::UNUSED,
-                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("Could not parse description");},  //Error Code 3: Could not parse description!
+                3 => AddressMode::Bus,
+                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("DescriptionError");},  //Error Code 3: Could not parse description!
             };
 
             let x1_size = match (description & 0b110000) >> 4 {
@@ -225,7 +261,7 @@ impl VmState {
                 1 => Size::Word,
                 2 => Size::Int,
                 3 => Size::Long,
-                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("Could not parse description");},  //Error Code 3: Could not parse description!
+                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("DescriptionError");},  //Error Code 3: Could not parse description!
             };
 
             let x2_size = match (description & 0b11000000) >> 6 {
@@ -233,7 +269,7 @@ impl VmState {
                 1 => Size::Word,
                 2 => Size::Int,
                 3 => Size::Long,
-                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("Could not parse description");},  //Error Code 3: Could not parse description!
+                _ => {self.write_register(REG_RE as usize, 3); return Result::Err("DescriptionError");},  //Error Code 3: Could not parse description!
             };
 
             let x1_value = self.read_inc_memory(local_count as usize, &x1_size, &mut local_count, &x1_mode);
@@ -241,16 +277,16 @@ impl VmState {
 
             let x1_true_value: u64 = match x1_mode {
                 AddressMode::Direct => x1_value,
-                AddressMode::Memory => self.read_memory(x1_value as usize, &x1_size),
+                AddressMode::Memory => self.read_memory_addressed(x1_value as usize, &x1_size, &AddressMode::Memory),
                 AddressMode::Register => self.read_register(x1_value as usize),
-                _ => return Result::Err("Could not parse description"),
+                _ => return Result::Err("DescriptionError"),
             };
         
             let x2_true_value: u64 = match x2_mode {
                 AddressMode::Direct => x2_value,
-                AddressMode::Memory => self.read_memory(x2_value as usize, &x2_size),
+                AddressMode::Memory => self.read_memory_addressed(x2_value as usize, &x2_size, &AddressMode::Memory),
                 AddressMode::Register => self.read_register(x2_value as usize),
-                _ => return Result::Err("Could not parse description"),
+                _ => return Result::Err("DescriptionError"),
             };
             self.write_register(REG_RC as usize, local_count); // Update the rC with the count
 
@@ -258,6 +294,7 @@ impl VmState {
                 Err(x) => return Result::Err(x),
                 Ok(_x) => {},
             }
+            self.ops_ran += 1;
             
             if self.read_register(REG_RE as usize) == 1 { // We ended safely and can now exit the program and end everything
                 //for mem in self.memory.iter_mut() {*mem = 0} //resets everything
@@ -266,10 +303,13 @@ impl VmState {
                 return Result::Ok(());
             }
             if !self.running { // Uh oh! Something went wrong and we had to end early. Keep the memory/registries open for debug
-                return Result::Err("VM Stopped Running");
+                return Result::Err("VMFailed");
+            }
+            if self.ops_ran >= self.op_limit {
+                return Result::Err("HitOpLimit");
             }
         }
-        return Result::Err("VM Stopped Running");
+        return Result::Err("DescriptionError");
     }
 
     fn read_byte(&self, loc: usize) -> Result<u8, &'static str> {
@@ -280,15 +320,15 @@ impl VmState {
     }
 
     fn op_code(&mut self, op_code: u8, x1_value: u64, x2_value: u64, x1_true_value: u64, x2_true_value: u64, x1_mode: AddressMode, x2_mode: AddressMode, x1_size: Size, x2_size: Size) -> Result<(), &'static str> {
-        println!("Op: {op_code}, raw x1: {x1_value}, raw x2: {x2_value}, x1: {x1_true_value}, x2: {x2_true_value}");
+        println!("Op: {op_code}, raw x1: {x1_value}, raw x2: {x2_value}, x1: {x1_true_value}, x2: {x2_true_value}, x1 mode: {x1_mode:?}, x2 mode: {x2_mode:?}");
         match op_code {
             0 => /* Halt */ self.running = false, // Should error the program after op code eval
             1 => /* Mov */ {
                 println!("Moving {x1_true_value} to {x2_mode:?}:{x2_value} as {x1_size:?}");
                 match x2_mode {
-                    AddressMode::Memory => self.write_memory(x2_value as usize, x1_true_value, x1_size),
+                    AddressMode::Memory => self.write_memory(x2_value as usize, x1_true_value, &x1_size),
                     AddressMode::Register => self.write_register(x2_value as usize, x1_true_value),
-                    _ => return Result::Err("Invalid Target"),
+                    _ => return Result::Err("InvalidTarget"),
                 }
                 return Result::Ok(());
             },
@@ -310,34 +350,37 @@ impl VmState {
             15 => /* DubMul */ self.write_register(2, d2l(l2d(x1_true_value) * l2d(x2_true_value))),
             16 => /* DubDiv */ self.write_register(2, d2l(l2d(x1_true_value) / l2d(x2_true_value))),
 
+            // TODO: take acount of Operand size, oops.
             17 => /* StackPush */ {
-                if self.stack.capacity() > self.stack_limit {
-                    return Result::Err("StackOverflow");   
-                }
-                self.stack.push(x1_true_value);
+                return self.push_stack(x1_true_value, &x1_size)
             },
             18 => /* StackPop */ {
-                match self.stack.pop() {
-                    Some(x) => return self.op_code(1, x, x2_value, x, x2_true_value, x1_mode, x2_mode, x1_size, x2_size),
-                    None => return Result::Err("StackUnderflow")
+                match self.pop_stack(&x1_size) {
+                    Ok(x) => {
+                        match x1_mode {
+                            AddressMode::Memory => self.write_memory(x1_value as usize, x, &x1_size),
+                            AddressMode::Register => self.write_register(x1_value as usize, x),
+                        _ => return Result::Err("InvalidTarget"),
+                        }
+                        return Result::Ok(());
+                    },
+                    Err(x) => return Err(x),
                 }
             }
 
             19 => /* Call */ {
-                if self.stack.capacity() > self.stack_limit {
-                    return Result::Err("StackOverflow");   
-                }
-                self.stack.push(self.read_register(REG_RC as usize));
+                let loc = self.read_register(REG_RC as usize);
                 self.write_register(REG_RC as usize, x1_true_value);
+                return self.push_stack(loc, &Size::Long);
             }
             20 => /* Ret */ {
-                match self.stack.pop() {
-                    Some(x) => self.write_register(REG_RC as usize, x),
-                    None => return Result::Err("StackUnderflow")
+                match self.pop_stack(&Size::Long) {
+                    Ok(x) => self.write_register(REG_RC as usize, x),
+                    Err(x) => return Result::Err(x)
                 }
             }
 
-            _ => return Result::Err("Invalid Target"),
+            _ => return Result::Err("InvalidOpCode"),
         }
         return Result::Ok(());
     }
@@ -357,16 +400,17 @@ impl Default for VmState {
         VmState {
             memory: {
                 let mut vec: Vec<u8> = Vec::new();
-                for _ in 0..512 {
+                for _ in 0..768 { //512 for memory, 128 bytes for stack, 128 bytes for program
                     vec.push(0);
                 }
                 vec
             },
-            stack: Vec::with_capacity(128),
-            stack_limit: 128,
-            registers: [0, 0, 0, 0, 128, 0, 0, 0, 0],
+            stack_location: 512,
+            program_location: 512+128,
+            registers: [0, 0, 0, 0, 512+128, 512, 0, 0, 0],
+            op_limit: 1000,
+            ops_ran: 0,
             running: false,
-            program_space: 128
         }
     }
 }
@@ -379,10 +423,22 @@ pub enum Size {
     Long, // u64
 }
 
+impl Size {
+    pub fn get_size(&self) -> u8 {
+        match self {
+            Size::Byte => 1,
+            Size::Word => 2,
+            Size::Int => 4,
+            Size::Long => 8,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum AddressMode {
     Memory,
     Direct,
     Register,
-    UNUSED, // TODO: pick a use for this (bus?)
+    Bus,
 }
+

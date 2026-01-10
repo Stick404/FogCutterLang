@@ -3,19 +3,19 @@ mod tests {
     use crate::vm_v2::*;
 
     #[test]
-    fn memory_read_write() {
+    fn memory_read_write() { // Tests basic memory writing
         let mut mem = VmState::default();
 
-        mem.write_memory(0, 255, Size::Byte);
+        mem.write_memory(0, 255, &Size::Byte);
         assert_eq!(mem.read_memory(0, &Size::Byte), 255);
 
-        mem.write_memory(0, 65535, Size::Word);
+        mem.write_memory(0, 65535, &Size::Word);
         assert_eq!(mem.read_memory(0, &Size::Word), 65535);
         
-        mem.write_memory(0, 4294967295, Size::Int);
+        mem.write_memory(0, 4294967295, &Size::Int);
         assert_eq!(mem.read_memory(0, &Size::Int), 4294967295);
 
-        mem.write_memory(0, 18446744073709551615, Size::Long);
+        mem.write_memory(0, 18446744073709551615, &Size::Long);
         assert_eq!(mem.read_memory(0, &Size::Long), 18446744073709551615);
     }
 
@@ -37,7 +37,7 @@ mod tests {
     }
 
     #[test]
-    fn program_sizes(){ // Tests the Sizes
+    fn program_sizes(){ // Tests the Sizes in the Instructions
         let mut vm = VmState::default();
         let program: Vec<u8> = vec![
             1, MD1|MR2|SW1, 0b11111111, 0b11111111, 0, // Moves value word max to r0
@@ -90,12 +90,12 @@ mod tests {
     }
 
     #[test]
-    fn program_jmp() {
-        let mut vm = VmState::default();
+    fn program_jmp() { // Tests the Jmp OpCode
+        let mut vm = VmState::new(64, 64, 64, 200);
         let program: Vec<u8> = vec![
             1, MD1|MR2, 1, 0, // Moves value 1 ro r0
             1, MD1|MR2, 1, 1, // Moves value 1 ro r1
-            1, MD1|MR2, 128+20, 3, // Moves value 128+16 to r0
+            1, MD1|MR2, 128+20, 3, // Moves value 64+20 to r3
             6, MR1|MR1, 0, 0, // Jmps to where r3 is
             0, 0, 0, 0, // A "brick wall" to crash the program incase of not jumping
             1, MD1|MR2, 255, 3, // Will crash the program if it jumps
@@ -108,7 +108,7 @@ mod tests {
     }
     
     #[test]
-    fn program_float_math() {
+    fn program_float_math() { // Tests the Doubles/Floating point Math OpCode
         let float1: f64 = 1.0;
         let float2: f64 = 2.5;
 
@@ -142,26 +142,30 @@ mod tests {
     }
 
     #[test]
-    fn program_basic_stack() {
+    fn program_basic_stack() { // Tests the basic Stack Operations
         let mut vm = VmState::default();
         let program: Vec<u8> = vec![
             1, MD1|MR2, 1, 0, // Moves value 1 to r0
             17, MD1, 5, 0, // Pushs 5
             17, MR1, 0, 0, // Pushs reg 0
-            18, MD1, 2, 0, // Pops to r2
+            18, MR1, 1, 0, // Pops to r1
             18, MM2, 0, 0, // Pops to mem0
 
             1, MD1|MR2, 1, REG_RE, // End
         ];
 
-        assert!(!vm.run_program(&program).is_err());
-        assert_eq!(vm.read_register(0), 1);
+        match vm.run_program(&program) {
+            Ok(_x) => {}
+            Err(x) => {println!("{x}"); assert!(false)}
+        }
+        assert_eq!(vm.read_register(1), 1);
         assert_eq!(vm.read_memory(0, &Size::Byte), 5);
+        assert_eq!(vm.read_register(REG_RS as usize), vm.stack_location);
     }
 
     #[test]
-    fn program_call_stack() {
-        let mut vm = VmState::default();
+    fn program_call_stack() { // Tests just the Call OpCode
+        let mut vm = VmState::new(64, 64, 64, 200);
         let program: Vec<u8> = vec![
             1, MD1|MM2, 1, 0, // Moves value 1 to mem0
             1, MD1|MM2, MD1|MR2, 1, // Moves value MD1|MR2 to mem1
@@ -173,14 +177,14 @@ mod tests {
         ];
 
         assert!(!vm.run_program(&program).is_err());
-        match vm.peak_stack() { // Checks to see if there is a address on the stack
+        match vm.peak_stack(&Size::Long) { // Checks to see if there is a address on the stack
             None => assert!(false),
-            Some(x) => assert_eq!(x, 148)
+            Some(x) => assert_eq!(x, 128+20)
         }
     }
 
     #[test]
-    fn program_call_stack_2() {
+    fn program_call_stack_2() { // Tests the Call and Ret OpCodes
         let mut vm = VmState::default();
         let program: Vec<u8> = vec![
             1, MD1|MM2, 20, 0, // Moves value 20 to mem0
@@ -193,9 +197,79 @@ mod tests {
         ];
         
         assert!(!vm.run_program(&program).is_err());
-        match vm.peak_stack() { // Checks to see if there is no address on the stack
-            None => {} 
-            Some(_x) => assert!(false),
+        assert_eq!(vm.read_register(REG_RS as usize), vm.stack_location);
+    }
+
+
+    #[test]
+    fn program_program_size_break() { // Tries to break the Program Size
+        let mut vm = VmState::new(0, 10, 10, 200);
+        let mut program: Vec<u8> = Vec::new();
+        for i in 0..100 {
+            program.push(i);
+        }
+
+        match vm.write_program(&program) {
+            Ok(_x) => assert!(false),
+            Err(_x) => {}
+        }
+    }
+
+    #[test]
+    fn program_stack_overflow() { // Tries to crash the stack
+        let program: Vec<u8> = vec![
+            17, MD1|SL1, 1, 0, 0, 0, 0, 0, 0, 0, 0, // Pushs 5L
+            
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+        let mut vm = VmState::new(10, 2, program.len() as u64, 200);
+
+        match vm.run_program(&program) {
+            Ok(_x) => assert!(false),
+            Err(x) => {
+                println!("error: {x}");
+                if x != "StackOverflow" {
+                    assert!(false)
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn program_stack_underflow() { // Tries to crash the stack
+        let program: Vec<u8> = vec![
+            18, MR1, 1, 0, // Pops to r1
+            
+            1, MD1|MR2, 1, REG_RE, // End
+        ];
+        let mut vm = VmState::new(10, 10, program.len() as u64, 200);
+
+        match vm.run_program(&program) {
+            Ok(_x) => assert!(false),
+            Err(x) => {
+                println!("error: {x}");
+                if x != "StackUnderflow" {
+                    assert!(false)
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn program_op_limit() { // Tries to crash the VM by hitting the eval loop
+        let program: Vec<u8> = vec![
+            1, MD1|MR2, 4, 3,
+            6, 0, 0, 0, // Inf loop
+        ];
+        let mut vm = VmState::new(0, 0, program.len() as u64, 50);
+        
+        match vm.run_program(&program) {
+            Ok(_x) => assert!(false), // Should *never* reach this
+            Err(x) => {
+                if x != "HitOpLimit" {
+                    assert!(false)
+                }
+            }
         }
     }
 }
