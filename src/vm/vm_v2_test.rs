@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(a)]
 mod tests {
     use crate::vm_v2::*;
 

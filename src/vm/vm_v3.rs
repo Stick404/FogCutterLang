@@ -1,3 +1,5 @@
+use std::{u8, usize};
+
 /* Memory Mangemetment Systems:
 *  * Borrow Checker: 
 *      * Moves the Memory Computations to pre compile time
@@ -27,6 +29,18 @@
 *   * End Result is this moves 255 (11111111) to register r0 with 5 bytes of program
 *
 */
+// Error Codes:
+pub static ERR_NO_ERROR: u32 = 0; // Used in common operations, or if returned by the VM "Unknown Error"
+pub static ERR_PROGRAM_NO_ERROR: u32 = 1;
+pub static ERR_INVALID_TARGET: u32 = 2;
+pub static ERR_OUT_OF_SPACE: u32 = 3;
+pub static ERR_INVALID_OP_CODE: u32 = 4;
+pub static RAN_NO_OP_CODE: u32 = 5;
+
+// Registers
+pub static REG_RC: u8 = 4;
+pub static REG_RS: u8 = 5;
+pub static REG_RE: u8 = 6;
 
 // Big o'l TODO list:
 // TODO: Memory Reading and Writing
@@ -38,26 +52,31 @@
 // TODO: Basic Math OpCodes
 // TODO: Copy the OpCodes from vm_v2
 
+// Error codes take up an Int
+type VmResult<X> = Result<X, u32>;
+type VmEmpty = VmResult<()>;
+
 // Memory is indexed by 64 bits
 pub struct VmState {
     memory: Vec<u8>,
-    regisers: [u64; 5],
+    registers: [u64; 9],
     array_regisers: [[u64; 32]; 3],
     standard_memory: u64, // This is the point in memory where standered operations end (inclusive)
     stack_memory: u64, // This is the point in memory where stack operations end (inclusive)
     program_memory: u64, // This is the point in program where stack operations end (inclusive)
+    running: bool,
 }
 
 pub struct Operand {
-    direct_value: u64, // The direct byte code value of the Operand
-    true_value: u64, // The read value of the Operand 
-    size: Size, // Size in Bytes of the Operand
-    address_mode: AddressMode, // Address Mode of the Operand
+    pub direct_value: u64, // The direct byte code value of the Operand
+    pub true_value: u64, // The read value of the Operand 
+    pub size: Size, // Size in Bytes of the Operand
+    pub address_mode: AddressMode, // Address Mode of the Operand
 }
 
 pub struct OpCode {
-    count: u8, // This is the amount of Operands required for the OpCode, should *never* be more than 255
-    function: fn(&mut VmState, Vec<Operand>) // This is the function to run, should assume that the Vec is the size of count
+    pub count: u8, // This is the amount of Operands required for the OpCode, should *never* be more than 255
+    pub function: fn(&mut VmState, Vec<Operand>) -> VmEmpty // This is the function to run, should assume that the Vec is the size of count
 }
 
 #[derive(Debug)]
@@ -77,6 +96,16 @@ impl Size {
             Size::Long => 8,
         }
     }
+
+    pub fn to_size(size: u8) -> Self {
+        return match size {
+            0 => Size::Byte,
+            1 => Size::Word,
+            2 => Size::Int,
+            3 => Size::Word,
+            _ => Size::Byte // Not happy with this, but it works
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -85,4 +114,237 @@ pub enum AddressMode {
     Register,
     Memory,
     Bus,
+}
+
+impl AddressMode {
+    pub fn to_mode(size: u8) -> Self {
+        return match size {
+            0 => AddressMode::Direct,
+            1 => AddressMode::Register,
+            2 => AddressMode::Memory,
+            3 => AddressMode::Bus,
+            _ => AddressMode::Memory,
+        };
+    }
+}
+
+impl VmState {
+    pub fn new(memory_size: u64, stack_size: u64, program_size: u64) -> Self {
+        return VmState {
+            memory: {
+                let mut vec: Vec<u8> = vec![];
+                for _ in 0..memory_size+stack_size+program_size {
+                    vec.push(0);
+                }
+                vec
+            },
+            registers: [0, 0, 0, 0, stack_size+memory_size, 0, 0xFFFFFFFFFFFFFFFF, 0, 0],
+            array_regisers: [[0; 32]; 3],
+            standard_memory: memory_size,
+            stack_memory: stack_size,
+            program_memory: program_size,
+            running: false
+        };
+    }
+
+    pub fn default() -> Self {
+        return VmState::new(512, 512, 512);
+    }
+
+    pub fn write(&mut self, value: u64, target: u64, mode: &AddressMode, size: &Size) -> VmEmpty {
+        return match mode {
+            AddressMode::Direct => VmEmpty::Err(ERR_INVALID_TARGET),
+            AddressMode::Bus => VmEmpty::Ok(()), // TODO: Add the Bus
+            AddressMode::Register => {
+                if target > self.registers.len() as u64 {
+                    return VmEmpty::Err(ERR_INVALID_TARGET);
+                }
+                self.registers[target as usize] = value;
+                return VmEmpty::Ok(());
+            },
+            AddressMode::Memory => {
+                // Checks to see if the max size would be larger than memory
+                if target + size.get_size() as u64 > self.memory.len() as u64 {
+                    VmEmpty::Err(ERR_INVALID_TARGET)
+                } else {
+                    let slot = target as usize;
+                    match size {
+                        Size::Byte => {
+                            self.memory[slot] = value as u8
+                        },
+                        Size::Word => {
+                            self.memory[slot] = (value & 0xFF) as u8;
+                            self.memory[slot +1] = ((value & 0xFF00) >> 8) as u8;
+                        },
+                        Size::Int => {
+                            self.memory[slot] = (value & 0xFF) as u8;
+                            self.memory[slot +1] = ((value & 0xFF00) >> 8) as u8;
+                            self.memory[slot +2] = ((value & 0xFF0000) >> 16) as u8;
+                            self.memory[slot +3] = ((value & 0xFF000000) >> 24) as u8;
+                        },
+                        Size::Long => {
+                            self.memory[slot] = (value & 0xFF) as u8;
+                            self.memory[slot +1] = ((value & 0xFF00) >> 8) as u8;
+                            self.memory[slot +2] = ((value & 0xFF0000) >> 16) as u8;
+                            self.memory[slot +3] = ((value & 0xFF000000) >> 24) as u8;
+                            self.memory[slot +4] = ((value & 0xFF00000000) >> 32) as u8;
+                            self.memory[slot +5] = ((value & 0xFF0000000000) >> 40) as u8;
+                            self.memory[slot +6] = ((value & 0xFF000000000000) >> 48) as u8;
+                            self.memory[slot +7] = ((value & 0xFF00000000000000) >> 56) as u8;
+                        }
+                    }
+                    VmEmpty::Ok(())
+                }
+            }
+        };
+    }
+
+    pub fn read(&self, target: u64, mode: &AddressMode, size: &Size) -> VmResult<u64>{
+        return match mode {
+            AddressMode::Direct => VmResult::Err(ERR_INVALID_TARGET),
+            AddressMode::Bus => VmResult::Ok(0), // TODO: Add the Bus
+            AddressMode::Register => {
+                if target > self.registers.len() as u64 {
+                    return VmResult::Err(ERR_INVALID_TARGET);
+                }
+                return VmResult::Ok(self.registers[target as usize]);
+            },
+            AddressMode::Memory => {
+                // Checks to see if the max size would be larger than memory
+                if target + size.get_size() as u64 > self.memory.len() as u64 {
+                    VmResult::Err(ERR_INVALID_TARGET)
+                } else {
+                    let slot = target as usize;
+                    let mut ret: u64;
+                    match size {
+                        Size::Byte => {
+                            ret = self.memory[slot] as u64;
+                        },
+                        Size::Word => {
+                            ret = self.memory[slot] as u64;
+                            ret |= (self.memory[slot +1] as u64) << 8;
+                        },
+                        Size::Int => {
+                            ret = self.memory[slot] as u64;
+                            ret |= (self.memory[slot +1] as u64) << 8;
+                            ret |= (self.memory[slot +2] as u64) << 16;
+                            ret |= (self.memory[slot +3] as u64) << 24;
+                        },
+                        Size::Long => {
+                            ret = self.memory[slot] as u64;
+                            ret |= (self.memory[slot +1] as u64) << 8;
+                            ret |= (self.memory[slot +2] as u64) << 16;
+                            ret |= (self.memory[slot +3] as u64) << 24;
+                            ret |= (self.memory[slot +4] as u64) << 32;
+                            ret |= (self.memory[slot +5] as u64) << 40;
+                            ret |= (self.memory[slot +6] as u64) << 48;
+                            ret |= (self.memory[slot +7] as u64) << 56;
+                        }
+                    }
+                    VmResult::Ok(ret)
+                }
+            }
+        };
+    }
+
+    pub fn read_inc_count() {
+        
+    }
+
+    pub fn write_program(&mut self, program: Vec<u8>) -> VmEmpty {
+        if program.len() > (self.stack_memory - self.program_memory) as usize {
+            return VmEmpty::Err(ERR_OUT_OF_SPACE);
+        }
+        let mut i: u64 = 0;
+        for byte in program.iter() {
+            self.memory[(self.stack_memory + self.standard_memory +i) as usize] = *byte;
+            i += 1;
+        }
+        return VmEmpty::Ok(());
+    }
+
+    pub fn set_run_program(&mut self, program: Vec<u8>) -> VmEmpty {
+        let x = self.write_program(program);
+        if x.is_err() {
+            return x;
+        }
+        return self.run_program();
+    }
+
+    pub fn run_program(&mut self) -> VmEmpty { // This should only ever return 1
+        self.running = true;
+
+        while self.running {        
+            let mut local_count = self.read(REG_RC as u64, &AddressMode::Register, &Size::Byte)?;
+            
+            let op_code = get_op_code(self.read(local_count, &AddressMode::Memory, &Size::Word).unwrap_or(0) as u16)?;
+            local_count += 2;
+
+            let mut operands: Vec<Operand> = Vec::with_capacity(op_code.count as usize);
+
+            // TODO: Test to make sure this fully works
+            // It did not fully work :despair:
+            for (i, operand_counter) in (0..(op_code.count+ (op_code.count % 2))/2).enumerate() {
+                let operand_descriptor: u8 = self.read(local_count as u64, &AddressMode::Memory, &Size::Byte)? as u8;
+                local_count += 1;
+                operands.push(
+                    Operand { direct_value: 0,true_value: 0, size: Size::to_size(operand_descriptor & 0b11), address_mode: AddressMode::to_mode((operand_descriptor & 0b1100) >> 2)});
+                if i < op_code.count as usize {
+                    operands.push(
+                        Operand { direct_value: 0, true_value: 0, size: Size::to_size((operand_descriptor & 0b110000) >> 4), address_mode: AddressMode::to_mode((operand_descriptor & 0b11000000) >> 6)})
+                };
+            }
+            // The Operands Vec is now half made, the direct_value and true_value still needs to be set
+            for operand in operands.iter_mut() {
+                operand.direct_value = self.read(local_count, &AddressMode::Memory, &operand.size)?;
+                
+                local_count += operand.size.get_size() as u64;
+                match operand.address_mode {
+                    AddressMode::Direct => operand.true_value = operand.direct_value,
+                    _ => operand.true_value = self.read(operand.direct_value, &operand.address_mode, &operand.size)?
+                }
+            }
+
+            self.write(local_count, REG_RC as u64, &AddressMode::Register, &Size::Long)?;
+
+            (op_code.function)(self, operands)?;
+
+            // Do VM health checks here, after the OpCode
+
+            let error = match self.read(REG_RE as u64, &AddressMode::Register, &Size::Int) {
+                Ok(x) => x,
+                Err(x) => return VmEmpty::Err(ERR_NO_ERROR)
+            };
+            if error == 0 {
+                self.running = false;
+                return VmEmpty::Ok(())
+            }
+            if error != 0xFFFFFFFFFFFFFFFF {
+                return VmEmpty::Err(error as u32);
+            }
+            
+        }
+        return VmEmpty::Err(ERR_NO_ERROR);
+    }
+}
+
+fn get_op_code(word: u16) -> VmResult<OpCode> {
+    return match word {
+        0 /* Crash */ => VmResult::Ok(OpCode { count: 0, function: |vm, _operands| -> VmEmpty {
+            vm.running = false;
+            vm.write(RAN_NO_OP_CODE as u64, REG_RE as u64, &AddressMode::Register, &Size::Byte)?;
+            return VmEmpty::Ok(());
+        }}),
+        1 /* Mov, 2 operands */ => VmResult::Ok(OpCode { count: 2, function: |vm, operands| -> VmEmpty {
+            vm.write(operands[0].true_value, operands[1].direct_value, &operands[1].address_mode, &operands[1].size)?;
+            return VmEmpty::Ok(());
+        }}),
+
+        2 /* Add, 3 operands */ => VmResult::Ok(OpCode { count: 3, function: |vm, operands| -> VmEmpty {
+            let add = operands[0].true_value + operands[1].true_value;
+            vm.write(add, operands[2].direct_value, &operands[2].address_mode, &operands[2].size)?;
+            return VmEmpty::Ok(());
+        }}),        
+        _ => VmResult::Err(ERR_INVALID_OP_CODE)
+    }
 }
