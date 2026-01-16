@@ -67,6 +67,7 @@ pub struct VmState {
     running: bool,
 }
 
+#[derive(Debug)]
 pub struct Operand {
     pub direct_value: u64, // The direct byte code value of the Operand
     pub true_value: u64, // The read value of the Operand 
@@ -74,7 +75,9 @@ pub struct Operand {
     pub address_mode: AddressMode, // Address Mode of the Operand
 }
 
+#[derive(Debug)]
 pub struct OpCode {
+    pub name: &'static str, // Name of the OpCode
     pub count: u8, // This is the amount of Operands required for the OpCode, should *never* be more than 255
     pub function: fn(&mut VmState, Vec<Operand>) -> VmEmpty // This is the function to run, should assume that the Vec is the size of count
 }
@@ -305,6 +308,9 @@ impl VmState {
                 }
             }
 
+            let op_count = op_code.count;
+            println!("Op Code: {op_code:?}, Ops: {operands:?}, Ops Count: {op_count}");
+
             self.write(local_count, REG_RC as u64, &AddressMode::Register, &Size::Long)?;
 
             (op_code.function)(self, operands)?;
@@ -330,21 +336,26 @@ impl VmState {
 
 fn get_op_code(word: u16) -> VmResult<OpCode> {
     return match word {
-        0 /* Crash */ => VmResult::Ok(OpCode { count: 0, function: |vm, _operands| -> VmEmpty {
+        0 /* Crash */ => VmResult::Ok(OpCode { name: "crs", count: 0, function: |vm, _operands| -> VmEmpty {
             vm.running = false;
             vm.write(RAN_NO_OP_CODE as u64, REG_RE as u64, &AddressMode::Register, &Size::Byte)?;
             return VmEmpty::Ok(());
         }}),
-        1 /* Mov, 2 operands */ => VmResult::Ok(OpCode { count: 2, function: |vm, operands| -> VmEmpty {
+        1 /* Mov, 2 operands */ => VmResult::Ok(OpCode { name: "mov", count: 2, function: |vm, operands| -> VmEmpty {
             vm.write(operands[0].true_value, operands[1].direct_value, &operands[1].address_mode, &operands[1].size)?;
             return VmEmpty::Ok(());
         }}),
 
-        2 /* Add, 3 operands */ => VmResult::Ok(OpCode { count: 3, function: |vm, operands| -> VmEmpty {
+        2 /* Add, 3 operands */ => VmResult::Ok(OpCode { name: "add", count: 3, function: |vm, operands| -> VmEmpty {
             let add = operands[0].true_value + operands[1].true_value;
             vm.write(add, operands[2].direct_value, &operands[2].address_mode, &operands[2].size)?;
             return VmEmpty::Ok(());
         }}),        
+        3 /* Sub, 3 operands */ => VmResult::Ok(OpCode { name: "sub", count: 3, function: |vm, operands| -> VmEmpty {
+            let sub = operands[0].true_value - operands[1].true_value;
+            vm.write(sub, operands[2].direct_value, &operands[2].address_mode, &operands[2].size)?;
+            return VmEmpty::Ok(());
+        }}),   
         _ => VmResult::Err(ERR_INVALID_OP_CODE)
     }
 }

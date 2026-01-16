@@ -29,7 +29,7 @@ mod tests {
 
         match vm.set_run_program(program) {
             Ok(_x) => {},
-            Err(x) => {println!("{x}"); assert_ne!(x, 0)}
+            Err(x) => {eprintln!("Got error: {x}"); assert_ne!(x, 0)}
         };
     }
 
@@ -47,7 +47,7 @@ mod tests {
 
         match vm.set_run_program(program) {
             Ok(_x) => {},
-            Err(x) => {println!("{x}"); assert_ne!(x, 0)}
+            Err(x) => {eprintln!("Got error: {x}"); assert_ne!(x, 0)}
         };
         assert_eq!(vm.read(0, &AddressMode::Memory, &Size::Byte).unwrap_or(0), 50);
         assert_eq!(vm.read(1, &AddressMode::Register, &Size::Byte).unwrap_or(0), 50)
@@ -56,10 +56,11 @@ mod tests {
     #[test]
     fn program_usigned_math() { // Tests the Unsigned Math OpCodes
         let program: Vec<u8> = vec![
-            1, 0, 0b01000000, 1, 0, // Moves 1 to r0
+            1, 0, 0b01000000, 10, 0, // Moves 1 to r0
             1, 0, 0b01000000, 2, 1, // Moves 2 to r1
             
-            2, 0, 0b01000100, 0b00000100, 0, 1, 2, // Adds r2 and r1 and puts the result in r2
+            2, 0, 0b01000100, 0b00000100, 0, 1, 2, // Adds r0 and r1 and puts the result in r2 (12)
+            3, 0, 0b01000100, 0b00000100, 1, 0, 3, // Subs r1 from r2 and puts the result in r3 (8)
 
             1, 0, 0b01000000, 0, REG_RE // Moves 0 to r6, Ends
         ];
@@ -68,8 +69,9 @@ mod tests {
     
         match vm.set_run_program(program) {
             Ok(_x) => {},
-            Err(x) => {println!("Got error: {x}"); assert_ne!(x, 1)}
+            Err(x) => {eprintln!("Got error: {x}"); assert!(false)}
         };
-        assert_eq!(vm.read(2, &AddressMode::Register, &Size::Byte).unwrap_or(0), 3);
+        assert_eq!(vm.read(2, &AddressMode::Register, &Size::Byte).unwrap_or(0), 12);
+        assert_eq!(vm.read(3, &AddressMode::Register, &Size::Byte).unwrap_or(0), 8);
     }
 }

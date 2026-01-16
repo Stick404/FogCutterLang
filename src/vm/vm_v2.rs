@@ -22,7 +22,7 @@ pub static REG_RS: u8 = 5;
 
 #[derive(PartialEq, Debug)]
 pub struct VmState {
-    // Memory is layed out like: General Memory, Stack Location, Program Location
+    // Memory is layed out like: General Memory, Stack Location (stack marches up), Program Location
     memory: Vec<u8>,
     pub stack_location: u64,
     pub program_location: u64,

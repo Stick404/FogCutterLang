@@ -1,4 +1,5 @@
-#[cfg(a)]
+#[cfg(test)]
+// test
 mod tests {
     use crate::vm_v2::*;
 
@@ -187,17 +188,18 @@ mod tests {
     fn program_call_stack_2() { // Tests the Call and Ret OpCodes
         let mut vm = VmState::default();
         let program: Vec<u8> = vec![
-            1, MD1|MM2, 20, 0, // Moves value 20 to mem0
+            1, MD1|MM2, 20, 0, // Moves value 20 (OpCode ret) to mem0
             1, MD1|MM2, 0, 1, // Moves value 0 to mem1
             1, MD1|MM2, 0, 2, // Moves value 0 to mem2
             1, MD1|MM2, 0, 3, // Moves value 0 to mem3
             // Assembles a self-made return
             19, MD1, 0, 0, // "calls" function 0
+            // "function" 0 calls ret
             1, MD1|MR2, 1, REG_RE, // End
         ];
         
-        assert!(!vm.run_program(&program).is_err());
-        assert_eq!(vm.read_register(REG_RS as usize), vm.stack_location);
+        assert!(!vm.run_program(&program).is_err()); // Makes sure the VM did not error
+        assert_eq!(vm.read_register(REG_RS as usize), vm.stack_location); // Makes sure the stack is at 0
     }
 
 
