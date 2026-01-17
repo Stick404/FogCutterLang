@@ -31,8 +31,8 @@ pub fn run_program(program: Vec<u8>, mem: &mut Memory) -> bool {
 
             x1_size = (val & 0b00110000) >> 4;
             x2_size = (val & 0b11000000) >> 6;
-            //println!("x1: adress mode: {x1_address_mode}, byte size: {x1_size}");
-            //println!("x2: adress mode: {x2_address_mode}, byte size: {x2_size}");
+            //println!("x1: address mode: {x1_address_mode}, byte size: {x1_size}");
+            //println!("x2: address mode: {x2_address_mode}, byte size: {x2_size}");
         } else if x1_byte_count <= x1_size.into() && x2_byte_count <= x2_size.into() {
             //println!("reading bytes!");
             let val: u8 = *val;
@@ -75,21 +75,21 @@ fn use_op_code(mem: &mut Memory, op_code: u8, x1: u64, x2: u64, x1_address_mode:
         1 => {
             match x1_address_mode {
                 0 => mem.write_memory(x1 as usize, x2_value as u8),
-                2 => mem.write_registor(x1 as usize, x2_value as u8),
+                2 => mem.write_register(x1 as usize, x2_value as u8),
                 _ => return false
             };
             return true;
         } 2 => {
             match x1_address_mode {
                 0 => { mem.write_memory(x1 as usize, mem.get_memory(x1 as usize) + x2_value as u8) },
-                2 => { mem.write_registor(x1 as usize, mem.get_register(x1 as usize) + x2_value as u8) },
+                2 => { mem.write_register(x1 as usize, mem.get_register(x1 as usize) + x2_value as u8) },
                 _ => return false
             };
             return true;
         } 3 => {
             match x1_address_mode {
                 0 => { mem.write_memory(x1 as usize, mem.get_memory(x1 as usize) - x2_value as u8) },
-                2 => { mem.write_registor(x1 as usize, mem.get_register(x1 as usize) - x2_value as u8) },
+                2 => { mem.write_register(x1 as usize, mem.get_register(x1 as usize) - x2_value as u8) },
                 _ => return false
             };
             return true;
@@ -115,12 +115,12 @@ impl Memory {
     }
 
     fn write_memory(&mut self, slot: usize, value: u8){ // TODO: make this do fucky bit shifting stuff, and take an u64
-        println!("writting to memory slot {slot} with {value}");
+        println!("writing to memory slot {slot} with {value}");
         self.memory[slot] = value;
     }
 
-    fn write_registor(&mut self, register: usize, value: u8){ // TODO: make this do fucky bit shifting stuff, and take an u64
-        println!("writting to register {register} with {value}");
+    fn write_register(&mut self, register: usize, value: u8){ // TODO: make this do fucky bit shifting stuff, and take an u64
+        println!("writing to register {register} with {value}");
         self.register[register] = value;
     }
 }

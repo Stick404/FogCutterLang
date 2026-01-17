@@ -1,11 +1,11 @@
-use crate::vm::{vm_v2};
+//use crate::vm::{vm_v2};
 
 pub mod vm;
 
 fn main() {
     println!("Hello world!");
     
-    let mut mem = vm_v2::VmState::default();
+/*    let mut mem = vm_v2::VmState::default();
 
     let mut numb: u64;
 
@@ -39,6 +39,7 @@ fn main() {
     */
     //vm_v1::run_program(program, &mut mem);
     //println!("{mem:?}");
+    */
 }
 
 // Opcodes required:

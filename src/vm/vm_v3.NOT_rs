@@ -8,9 +8,9 @@ use std::{u8, usize};
 *      * Enforces memory safety (mgiht not be required)
 *      * Low resource usages during run time
 * 
-*  * Refrence Counting
+*  * Reference Counting
 *      * More open to other paradimes
-*      * Moves the memory managment to run time
+*      * Moves the memory management to run time
 *      * Might be hard to understand
 *      * Without a solid knowledge level, easy to make memory leaks
 */
@@ -44,9 +44,9 @@ pub static REG_RE: u8 = 6;
 
 // Big o'l TODO list:
 // TODO: Memory Reading and Writing
-// TODO: Reigster Reading and Writing
+// TODO: Register Reading and Writing
 // TODO: Array Register Reading and Writing
-// TODO: The Stack's Pushing, Poping, and Peaking
+// TODO: The Stack's Pushing, Popping, and Peaking
 // TODO: Byte Parsing
 // TODO: OpCode Reading/Running
 // TODO: Basic Math OpCodes
@@ -60,7 +60,7 @@ type VmEmpty = VmResult<()>;
 pub struct VmState {
     memory: Vec<u8>,
     registers: [u64; 9],
-    array_regisers: [[u64; 32]; 3],
+    array_registers: [[u64; 32]; 3],
     standard_memory: u64, // This is the point in memory where standered operations end (inclusive)
     stack_memory: u64, // This is the point in memory where stack operations end (inclusive)
     program_memory: u64, // This is the point in program where stack operations end (inclusive)
@@ -142,7 +142,7 @@ impl VmState {
                 vec
             },
             registers: [0, 0, 0, 0, stack_size+memory_size, 0, 0xFFFFFFFFFFFFFFFF, 0, 0],
-            array_regisers: [[0; 32]; 3],
+            array_registers: [[0; 32]; 3],
             standard_memory: memory_size,
             stack_memory: stack_size,
             program_memory: program_size,

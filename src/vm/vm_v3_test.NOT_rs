@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[test]
-    fn program_usigned_math() { // Tests the Unsigned Math OpCodes
+    fn program_unsigned_math() { // Tests the Unsigned Math OpCodes
         let program: Vec<u8> = vec![
             1, 0, 0b01000000, 10, 0, // Moves 1 to r0
             1, 0, 0b01000000, 2, 1, // Moves 2 to r1

@@ -22,7 +22,7 @@ pub static REG_RS: u8 = 5;
 
 #[derive(PartialEq, Debug)]
 pub struct VmState {
-    // Memory is layed out like: General Memory, Stack Location (stack marches up), Program Location
+    // Memory is laid out like: General Memory, Stack Location (stack marches up), Program Location
     memory: Vec<u8>,
     pub stack_location: u64,
     pub program_location: u64,
@@ -115,7 +115,7 @@ impl VmState {
     }
 
     pub fn write_memory(&mut self, slot: usize, value: u64, size: &Size){
-        //println!("writting to memory slot {slot} with {value} as {size:?}");
+        //println!("writing to memory slot {slot} with {value} as {size:?}");
         match size {
             Size::Byte => {
                 if self.memory.capacity() <= slot { return; }
@@ -194,7 +194,7 @@ impl VmState {
     }
 
     pub fn write_register(&mut self, register: usize, value: u64) {
-        //println!("writting to register {register} with {value}");
+        //println!("writing to register {register} with {value}");
         match register {
             _ => self.registers[register] = value
         }
@@ -350,7 +350,7 @@ impl VmState {
             15 => /* DubMul */ self.write_register(2, d2l(l2d(x1_true_value) * l2d(x2_true_value))),
             16 => /* DubDiv */ self.write_register(2, d2l(l2d(x1_true_value) / l2d(x2_true_value))),
 
-            // TODO: take acount of Operand size, oops.
+            // TODO: take account of Operand size, oops.
             17 => /* StackPush */ {
                 return self.push_stack(x1_true_value, &x1_size)
             },
