@@ -4,35 +4,40 @@ use crate::vm::vm_v4::core::VMState;
 
 // This describes a type of an Object, may only live as long as the VM does
 #[derive(PartialEq, Debug)]
-pub struct ObjectType<'vm> {
+pub struct ObjectType {
     pub size: u32, // The size in Bytes of the Object
-    pub types: Vec<ObjectType<'vm>>, // The "nested" types within this Object
-    pub parent_vm: Arc<VMState<'vm>> // The Parent VM this is hosted in, used for Rust Reasons:tm:
+    pub types: Vec<ObjectType>, // The "nested" types within this Object
+    //pub parent_vm: Arc<RefCell<VMState>> // The Parent VM this is hosted in, used for Rust Reasons:tm:
 }
 
 // This describes a created Object
 #[derive(PartialEq, Debug)]
 pub struct Object<'vm> {
-    object_type: &'vm ObjectType<'vm>, // The ObjectType this describes
+    object_type: &'vm ObjectType, // The ObjectType this describes
     references: u32, // How many references point to this Object
     data: Vec<u8> // The Data inside of the Object
 }
 
-impl <'vm> ObjectType<'vm> {
+impl ObjectType {
     // Declares a "primitive," an ObjectType that does not depend on another type(s)
-    pub fn new_primitive(size: u32, vm: Arc<VMState<'vm>>) -> ObjectType<'vm> {
-        ObjectType { size: size, types: vec![], parent_vm: vm }
+    pub fn new_primitive(size: u32, vm: &mut VMState) -> &ObjectType {
+        let z = ObjectType { size: size, types: vec![], }; //parent_vm: vm
+        let x = vm.new_type(z);
+        let y = vm.get_type(x -1).unwrap();
+        return y;
     }
 
     // Declares a "struct," an ObjectType that does depend on another type(s)
-    pub fn new_struct(size: u32, types: Vec<ObjectType<'vm>>, vm: Arc<VMState<'vm>>)  -> ObjectType<'vm> {
-        ObjectType { size: size, types: types, parent_vm: vm }
+    pub fn new_struct(size: u32, types: Vec<ObjectType>, vm: &mut VMState) -> &ObjectType {
+        let z = ObjectType { size: size, types: types, }; //parent_vm: vm
+        let x = vm.new_type(z);
+        return vm.get_type(x -1).unwrap();
     }
 }
 
-impl<'vm> Object<'vm> {
+impl <'vm> Object<'vm> {
     // Creates a new Object, will live at most as long as the VM
-    pub fn new_object(object_type: &'vm ObjectType) -> Object<'vm> {
+    pub fn new_object(object_type: &ObjectType) -> Object {
         let size = object_type.size;
         Object { object_type: object_type, references: 1, data: {
             let mut z: Vec<u8> = Vec::with_capacity(size as usize);

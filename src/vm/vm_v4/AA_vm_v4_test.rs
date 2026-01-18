@@ -6,16 +6,18 @@ mod tests {
 
     #[test]
     pub fn object_init_test() {
-        let vm = Arc::new(VMState::new());
-        let typ: ObjectType = ObjectType::new_primitive(1, vm.clone());
+        let mut vm= VMState::new();
+        let typ: &ObjectType = ObjectType::new_primitive(1, &mut vm);
         println!("{typ:?}");
         let mut object = Object::new_object(&typ);
 
         object.set_data(vec![0xFF]);
 
         assert_eq!(object.get_data()[0], 0xFF);
-        let z = vm.get_type(0);
+        
+        let z = vm.get_type(0).unwrap();
         println!("{z:?}");
+        assert_eq!(z, typ)
     }
 
     #[test]
