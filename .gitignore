@@ -27,3 +27,4 @@ replay_pid*
 # Added by cargo
 
 /target
+/build
