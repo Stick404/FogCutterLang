@@ -1,3 +1,4 @@
 pub mod object;
-pub mod core;
+pub mod vm_state;
+pub mod bytecode;
 pub mod aa_vm_v4_test;

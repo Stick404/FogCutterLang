@@ -1,17 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
-
-    use crate::vm::vm_v4::{core::VMState, object::{Object, ObjectType}};
-    use crate::vm::vm_v4::core::VmRef;
+    use crate::vm::vm_v4::{object::{Object, ObjectType}, vm_state::{*, VMState}};
+    use crate::vm::vm_v4::vm_state::VmRef;
 
     #[test]
     pub fn object_init_test() {
         // Creates a VM
-        let mut vm: VmRef = Rc::new(RefCell::new(VMState::default()));
+        let vm: VmRef = VMState::default();
 
         // Registers a new type to the VM
-        let typ = ObjectType::new_primitive(1, "byte", &mut vm);
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
         println!("{typ:?}");
         // Creates an Object within the VM
         let object = Object::new_object(typ.clone(), vm.clone()).unwrap();
@@ -19,18 +17,14 @@ mod tests {
         // Writes to new Object, then reads from it
         vm.borrow_mut().write_object(object, vec![0xFF]);
         assert_eq!(vm.borrow().read_object(object).unwrap()[0], 0xFF);
-        
-        // Makes sure the type created and type in th VM are equal
-        let z = vm.borrow().get_type(0).unwrap();
-        assert_eq!(z, typ)
     }
 
     #[test]
     pub fn ref_counting_test() {
         // Creates a VM
-        let mut vm: VmRef = Rc::new(RefCell::new(VMState::default()));
+        let vm: VmRef = VMState::default();
         // Registers a new type to the VM
-        let typ = ObjectType::new_primitive(1, "byte", &mut vm);
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
 
 
         // Creates an Object within the VM, starts with a Ref count of 1
@@ -47,9 +41,9 @@ mod tests {
     #[test]
     pub fn mass_ref_counting_test() {
         // Creates a VM
-        let mut vm: VmRef = Rc::new(RefCell::new(VMState::default()));
+        let vm: VmRef = VMState::default();
         // Registers a new type to the VM
-        let typ = ObjectType::new_primitive(1, "byte", &mut vm);
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
 
         let mut objs: Vec<u32> = vec![];
         for _x in 0..100 {
@@ -68,9 +62,9 @@ mod tests {
     #[test]
     pub fn ref_counting_test_v2() {
         // Creates a VM
-        let mut vm: VmRef = Rc::new(RefCell::new(VMState::default()));
+        let vm: VmRef = VMState::default();
         // Registers a new type to the VM
-        let typ = ObjectType::new_primitive(1, "byte", &mut vm);
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
 
         // Creates 3 new objects
         let address_1 = Object::new_object(typ.clone(), vm.clone()).unwrap();
@@ -98,9 +92,9 @@ mod tests {
     #[test]
     pub fn struct_test() {
         // Creates a VM
-        let mut vm: VmRef = Rc::new(RefCell::new(VMState::default()));
+        let mut vm: VmRef = VMState::default();
         // Registers 2 new (basic) types to the VM
-        let typ = ObjectType::new_primitive(1, "byte", &mut vm);
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
         let wrong_typ = ObjectType::new_primitive(1, "wrong", &mut vm);
 
         // Registers a new Struct type with types of [typ, typ]

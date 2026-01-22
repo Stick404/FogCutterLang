@@ -1,11 +1,11 @@
-use std::{rc::Rc, str::FromStr};
+use std::{rc::Rc};
 
-use crate::vm::vm_v4::{core::VmRef};
+use crate::vm::vm_v4::{vm_state::VmRef};
 
 #[derive(PartialEq, Debug)]
 pub enum PassBy {
-    Value,
-    Reference
+    Value,    // Does a shallow copy
+    Reference // Returns the pointer
 }
 
 // This describes a type of an Object, may only live as long as the VM does
@@ -19,12 +19,13 @@ pub struct ObjectType {
 }
 
 // This describes a created Object
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
 pub struct Object {
     pub object_type: Rc<ObjectType>, // The ObjectType this describes
     pub references: u32, // How many references point to this Object
     data: Vec<u8>, // The Data inside of the Object
     pub parent_vm: VmRef, // The parent VM of this Object
+    pub location: u32,
 }
 
 impl ObjectType {
@@ -64,7 +65,7 @@ impl Object {
                 z.push(0);
             };
             z
-        }, parent_vm: vm.clone()};
+        }, parent_vm: vm.clone(), location: 4294967295};
         return vm.borrow_mut().new_object_direct(obj);
     }
 
