@@ -98,7 +98,8 @@ mod tests {
         let wrong_typ = ObjectType::new_primitive(1, "wrong", &mut vm);
 
         // Registers a new Struct type with types of [typ, typ]
-        let stc = ObjectType::new_struct(vec![typ.clone(), typ.clone()], "struct", &mut vm.clone());
+        let stc_pointer = ObjectType::new_struct(vec![typ.clone(), typ.clone()], "struct".to_string(), PassBy::Reference, &mut vm.clone());
+        let stc = vm.borrow().get_type(stc_pointer).unwrap();
         // Makes sure the struct was properly sized
         assert_eq!(stc.size, typ.size*2);
 
@@ -127,11 +128,12 @@ mod tests {
     pub fn create_object_on_stack_test() {
         // Creates a VM
         let vm: VmRef = VMState::default();
-        // These push new primitive objects onto the Stack
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]);
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 1003, true_value: None, size: Size::Word, address_mode: AddressMode::Direct }]);
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 10535, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]);
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 4679824527, true_value: None, size: Size::Long, address_mode: AddressMode::Direct }]);
+        // These push new Primitive Objects onto the Stack
+        // Also simulates OpCodes getting called with the right Operands
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]);
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 1003, true_value: None, size: Size::Word, address_mode: AddressMode::Direct }]);
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 10535, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]);
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 4679824527, true_value: None, size: Size::Long, address_mode: AddressMode::Direct }]);
 
         // Pops a (long) pointer
         let long_pointer = vm.borrow_mut().stack_pop(false).unwrap();
@@ -162,19 +164,30 @@ mod tests {
     }
 
     #[test]
+    // This tests creating a Struct/Non-Primitive Object via the Stack
     pub fn new_stack_object_test() {
         // Creates a VM
-        let vm: VmRef = VMState::default();
+        let mut vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
         let byte = vm.borrow().get_type(PRIM_BYTE).unwrap();
+        // Gets the Int ObjectType
         let int = vm.borrow().get_type(PRIM_INT).unwrap();
-        let typ = vm.borrow_mut().new_type(ObjectType { size: 5, types: vec![byte, int], pass_by: PassBy::Reference, id: "aa".to_string() });
+        // Creates an "Object" called `aa` that takes 5 bytes, and holds
+        
+        // Creates a new ObjectType that holds byte, int, named "aa," that is pass by Reference
+        // in C this could be:
+        // struct AA {
+        //      byte x;
+        //      int  y;
+        //};
+        let typ = ObjectType::new_struct(vec![byte, int], "aa".to_string(), PassBy::Reference, &mut vm);
 
         // These push new primitive objects onto the Stack
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 20, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
-        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 20, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]).unwrap();
 
         // Creates a new Object with the "type" of typ, consumes the preversously made primitive objects
-        (get_opcode(0).unwrap().function)(vm.clone(), vec![Operand {direct_value: typ as u64, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: typ as u64, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
 
         // Pops the Object and compares it to a constant
         let object = vm.borrow_mut().stack_pop(false).unwrap();
@@ -186,11 +199,30 @@ mod tests {
     }
 
     #[test]
-    pub fn byte_parsing() {
+    // This runs a very basic program, copies what `new_stack_object_test` does but in ByteCode
+    pub fn basic_program() {
         // Creates a VM
         let vm: VmRef = VMState::default();
-        let program: Vec<u8> = vec![];
-        vm.borrow_mut().write_program(program);
+        // Gets the Byte ObjectType
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap();
+        // Gets the Int ObjectType
+        let int = vm.borrow().get_type(PRIM_INT).unwrap();
+
+        // Creates a Struct Object
+        let typ = ObjectType::new_struct(vec![byte, int], "aa".to_string(), PassBy::Reference, &mut vm.clone());
+        let program: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000010, /* Direct, Int  */ 0x14, 0x00, 0x00, 0x00, /* 20 */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+
+            0x01, 0x00, /* New     */ 0b00000000, /* Direct, Byte */ typ as u8, // Shouldn't ever have more than 255 built in types, so this is safe,
+            0x00, 0x00, /* Ends the program */
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+
+        let object = vm.borrow_mut().stack_pop(false).unwrap();
+        let comp: &Vec<u8> = &vec![5, 20, 0, 0, 0];
+        assert_eq!(vm.borrow().read_object(object).unwrap(), comp);
     }
 
     #[test]

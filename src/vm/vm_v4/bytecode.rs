@@ -16,19 +16,9 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::VmRef};
     Memory, directly writes the Object to memory
     Bus, UNIMPLEMENTED, DO *NOT* USE
  */
- 
-/* OLD Op Codes:
-    - Mov (ix1, ox2) This copies the value at x1 to x2, the AddressMode of x1 states where to read it, and the AddressMode of x2 states what to read/write
-    - New (ix1, ox2) This creates an Object with VMState::get_type(&self, x1), and writes the pointer to x2
-    - Wrt (ox1, ix2, ix3) This writes to an Object at x1, with the "array" of x2, size defined by x3
-    - Add (ix1, ix2, ox3) This adds a built-in primitive in x1 and x2, and outputs to x3
-    - Sub (ix1, ix2, ox3) This subs a built-in primitive in x1 and x2, and outputs to x3
-    - Mul (ix1, ix2, ox3) This multiples a built-in primitive in x1 and x2, and outputs to x3
-    - Jmp (ix1)
-    - JmpGr (ix1, ix2, ix3)
- */
 
  /* Op Codes:
+    - End    () This Ends the current running Program
     - New    (ix1) This creates an Object with the bytes ontop of the stack
     - PshPrm (ix1) This pushes a built-in primitive onto the Stack
     - LrdMem (ix1) This pushes an Object in memory onto the stack (auto incs loaded Object)
@@ -57,24 +47,29 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::VmRef};
   */
 
 pub struct OpCode {
-    pub name: &'static str, // Name of the OpCode
-    pub count: u8, // This is the amount of Operands required for the OpCode, should *never* be more than 255
+    pub name: &'static str,                             // Name of the OpCode, used for VM level errors
+    pub count: u8,                                      // This is the amount of Operands required for the OpCode, should *never* be more than 255
     pub function: fn(VmRef, Vec<Operand>) -> Option<()> // This is the function to run, should assume that the Vec is the size of count
 }
 
 #[derive(Debug)]
 pub struct Operand {
-    pub direct_value: u64, // The direct byte code value of the Operand
+    pub direct_value: u64,          // The direct byte code value of the Operand
     pub true_value: Option<Object>, // The read value of the Operand based on the AddressMode
-    pub size: Size, // Size in Bytes of the Operand
-    pub address_mode: AddressMode, // Address Mode of the Operand. If this is `AddressMode::Memory` then we assume the size is Size::Int
+    pub size: Size,                 // Size in Bytes of the Operand
+    pub address_mode: AddressMode,  // Address Mode of the Operand
 }
 
 
 pub fn get_opcode(opcode: u16) -> Option<OpCode> {
     return match opcode {
         // TODO: Finish this!
-        0 => Some(OpCode {name: "New", count: 1, function: |vm, operands| -> Option<()> {
+        0 => Some(OpCode { name: "End", count: 0, function: |vm, _| -> Option<()>{
+            vm.borrow_mut().running = false;
+            return Some(());
+        }}),
+
+        1 => Some(OpCode {name: "New", count: 1, function: |vm, operands| -> Option<()> {
             let temp = operands.get(0)?;
             let typ = vm.borrow().get_type(temp.direct_value as u32)?;
 
@@ -111,7 +106,8 @@ pub fn get_opcode(opcode: u16) -> Option<OpCode> {
             vm.borrow_mut().stack_push(obj, false);
             return Some(());
         }}),
-        1 => Some(OpCode { name: "PshPrm", count: 1, function:  |vm, operands| -> Option<()> {
+
+        2 => Some(OpCode { name: "PshPrm", count: 1, function: |vm, operands| -> Option<()> {
             let operand = operands.get(0)?;
             let typ = vm.borrow().get_type(match operand.size {
                 Size::Byte => 0,

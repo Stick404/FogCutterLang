@@ -8,24 +8,23 @@ pub enum PassBy {
     Reference // Returns the pointer
 }
 
-// This describes a type of an Object, may only live as long as the VM does
+// This describes a type of an Object
 #[derive(PartialEq, Debug)]
 pub struct ObjectType {
-    pub size: u32, // The size in Bytes of the Object
+    pub size: u32,                  // The size in Bytes of the Object
     pub types: Vec<Rc<ObjectType>>, // The "nested" types within this Object
-    //pub parent_vm: Arc<RefCell<VMState>> // The Parent VM this is hosted in, used for Rust Reasons:tm:
-    pub pass_by: PassBy,
-    pub id: String
+    pub pass_by: PassBy,            // If this type should be pass by Value, or pass by Reference
+    pub id: String                  // String ID of the ObjectType, used for 
 }
 
 // This describes a created Object
 #[derive(Debug)]
 pub struct Object {
     pub object_type: Rc<ObjectType>, // The ObjectType this describes
-    pub references: u32, // How many references point to this Object
-    data: Vec<u8>, // The Data inside of the Object
-    pub parent_vm: VmRef, // The parent VM of this Object
-    pub location: u32,
+    pub references: u32,             // How many references point to this Object
+    data: Vec<u8>,                   // The Data inside of the Object
+    pub parent_vm: VmRef,            // The parent VM of this Object
+    pub location: u32,               // What "memory" slot this Object is in, in its parent VM
 }
 
 impl ObjectType {
@@ -39,7 +38,7 @@ impl ObjectType {
     }
 
     // Declares a "struct," an ObjectType that does depend on another type(s)
-    pub fn new_struct(types: Vec<Rc<ObjectType>>, id: &str, vm: &mut VmRef) -> Rc<ObjectType> {
+    pub fn new_struct(types: Vec<Rc<ObjectType>>, id: String, pass_by: PassBy, vm: &mut VmRef) -> u32 {
         let mut size: u32 = 0;
         // Makes the "size" of the struct the combined size of all the other Object Types
         for typ in &types {
@@ -49,9 +48,8 @@ impl ObjectType {
             };
         }
 
-        let z = ObjectType { size: size, types: types, pass_by: PassBy::Reference, id: id.to_string() };
-        let x = vm.borrow_mut().new_type(z);
-        return vm.borrow().get_type(x).unwrap();
+        let z = ObjectType { size: size, types: types, pass_by: pass_by, id: id };
+        return vm.borrow_mut().new_type(z);
     }
 }
 

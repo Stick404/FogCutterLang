@@ -1,23 +1,25 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc, u64};
 
-use crate::vm::vm_v4::object::{Object, ObjectType, PassBy};
+use crate::vm::{vm_v4::{bytecode::*, object::{Object, ObjectType, PassBy}}};
 
 pub type VmRef = Rc<RefCell<VMState>>;
+pub type VmResult<X> = Result<X, u32>;
+pub type VmEmpty = VmResult<()>;
 
 // TODO: Make a VMReturn type, and Error Codes rather than using `bool`
 
 #[derive(Debug)]
 pub struct VMState {
-    struct_ids: Vec<Rc<ObjectType>>, // All Types known by the VM
-    struct_hashes: HashSet<String>,
-    objects: Vec<Option<Object>>, // All Objects held within the VM, they can either be Empty, or Used
-    program: Vec<u8>, // The program this VMState will run, this is counted in allocated_size
-    max_memory: u64, // Max memory in bytes allocated to hold Objects
-    allocated_size: u64, // Current memory of bytes allocated (not recalculated)
-    stack: Vec<u32>, // Holds: Function Returns, Function Values, local Function Values
-    base_pointer: u64, // Points to the local "bottom" of the Stack
-    program_pointer: u64, // Points the section in `program` to run
-    running: bool,
+    struct_ids: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
+    struct_hashes: HashSet<String>,  // All known ObjectTypes
+    objects: Vec<Option<Object>>,    // All Objects held within the VM, they can either be Empty, or Used
+    program: Vec<u8>,                // The program this VMState will run, this is counted in allocated_size
+    max_memory: u64,                 // Max memory in bytes allocated to hold Objects
+    allocated_size: u64,             // Current memory of bytes allocated (not recalculated)
+    stack: Vec<u32>,                 // Holds: Function Returns, Function Values, local Function Values
+    base_pointer: u64,               // Points to the local "bottom" of the Stack
+    program_pointer: u64,            // Points the section in `program` to run
+    pub running: bool,                   // States if this VM is currently running or not
 }
 
 // The Stack, and the Stacking issues
@@ -310,12 +312,12 @@ impl VMState {
             None => return None
         };
         
-        return Some(obj.location)// Temp
+        return Some(obj.location)
     }
 
     // Returns if it could write the program or not
     pub fn write_program(&mut self, program: Vec<u8>) -> bool {
-        if self.max_memory > program.len() as u64 {
+        if self.max_memory < program.len() as u64 {
             return false;
         }
         self.allocated_size += program.len() as u64;
@@ -324,15 +326,70 @@ impl VMState {
         return true;
     }
 
-    pub fn run_program(&mut self, program: Vec<u8>) -> bool {
-        if !self.write_program(program) {
-            return false;
+    pub fn run_program(vm_ref: VmRef, program: Vec<u8>) -> Option<()> {
+        if !vm_ref.borrow_mut().write_program(program) {
+            return None;
         }
         
-        while self.running {
-            
-        }
         // TODO: run a real program
-        return true;
+        return VMState::run(vm_ref);
+    }
+
+    /* TODO: implement:
+        Structs         
+    */
+
+    // An example ByteCode is: 0x01 0x00| 0x00 | 0x01
+    // 0 byte: 
+    pub fn run(vm_ref: VmRef) -> Option<()> {
+        vm_ref.borrow_mut().program_pointer = 0;
+        vm_ref.borrow_mut().running = true;
+        while vm_ref.borrow().running {
+            // Holds the raw OpCode call
+            let mut op_code_value: u16 = vm_ref.borrow_mut().read_program_byte()? as u16;
+            
+            op_code_value |= vm_ref.borrow_mut().read_program_byte()? as u16 >> 8;
+
+            // Contains an OpCode to be used
+            let op_code: &OpCode = &get_opcode(op_code_value)?;
+            let mut operands: Vec<Operand> = vec![];
+
+            let mut read_operand_description = true;
+            for _ in 0..op_code.count*2 {
+                // Checks if the program is reading a description or Operand
+                if read_operand_description {
+                    // Pushes an half inited Operand
+                    let desc_byte = vm_ref.borrow_mut().read_program_byte()?;
+                    operands.push(Operand {
+                        direct_value: 0,
+                        true_value: None,
+                        size: Size::to_size(desc_byte & 0b11),
+                        address_mode: AddressMode::to_mode(desc_byte & 0b1100 >> 2)});
+                        
+                } else {
+                    // Finishes initing the Operand
+                    let mut operand_value: u64 = 0;
+                    let operads_len = operands.len() -1;
+
+                    for (count, _) in (0..operands.last().unwrap().size.get_size()).enumerate() {
+                        operand_value |= (vm_ref.borrow_mut().read_program_byte()? as u64) << count*8;
+                    }
+                    
+                    operands.get_mut( operads_len)?.direct_value = operand_value;
+                }
+                read_operand_description = !read_operand_description;
+            }
+            // Operands is now fully ready to be passed into the OpCode
+            // Thus we run the OpCode
+
+            (op_code.function)(vm_ref.clone(), operands);
+        }
+        return Some(());
+    }
+
+    pub fn read_program_byte(&mut self) -> Option<u8> {
+        let z = *self.program.get(self.program_pointer as usize)?;
+        self.program_pointer += 1;
+        return Some(z);
     }
 }
