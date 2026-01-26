@@ -35,7 +35,7 @@ impl ObjectType {
     pub fn new_primitive(size: u32, id: &str, vm: &mut VmRef) -> Rc<ObjectType> {
         let z = ObjectType { size: size, types: vec![], pass_by: PassBy::Value, id: id.to_string() };
         let x = vm.borrow_mut().new_type(z);
-        return vm.borrow().get_type(x -1).unwrap();
+        return vm.borrow().get_type(x).unwrap();
     }
 
     // Declares a "struct," an ObjectType that does depend on another type(s)
@@ -51,7 +51,7 @@ impl ObjectType {
 
         let z = ObjectType { size: size, types: types, pass_by: PassBy::Reference, id: id.to_string() };
         let x = vm.borrow_mut().new_type(z);
-        return vm.borrow().get_type(x -1).unwrap();
+        return vm.borrow().get_type(x).unwrap();
     }
 }
 

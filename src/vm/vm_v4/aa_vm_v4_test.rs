@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::vm::vm_v4::{object::{Object, ObjectType}, vm_state::{*, VMState}};
+    use crate::vm::vm_v4::{bytecode::{AddressMode, Operand, Size, get_opcode}, object::{Object, ObjectType, PassBy}, vm_state::{VMState, *}};
     use crate::vm::vm_v4::vm_state::VmRef;
 
     #[test]
@@ -120,6 +120,77 @@ mod tests {
         let wrong = Object::new_object(wrong_typ.clone(), vm.clone()).unwrap();
         // Tries to use the wrongly typed Object in the struct
         assert!(!vm.borrow_mut().write_object_typed(stc_object, vec![basic_1, wrong]))
+    }
+
+    #[test]
+    // This simulates bytecode creating, popping, and reading Objects on the Stack
+    pub fn create_object_on_stack_test() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // These push new primitive objects onto the Stack
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]);
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 1003, true_value: None, size: Size::Word, address_mode: AddressMode::Direct }]);
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 10535, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]);
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 4679824527, true_value: None, size: Size::Long, address_mode: AddressMode::Direct }]);
+
+        // Pops a (long) pointer
+        let long_pointer = vm.borrow_mut().stack_pop(false).unwrap();
+        // Creates a "reference" to compare against
+        let long_vec: &Vec<u8> = &u64::to_le_bytes(4679824527).to_vec();
+        // Reads and compare
+        assert_eq!(vm.borrow().read_object(long_pointer).unwrap(), long_vec);
+        // Clears the long object
+        vm.borrow_mut().dec_object_count(long_pointer);
+
+        // Repeat for Int, Word, and Byte
+
+        let int_pointer = vm.borrow_mut().stack_pop(false).unwrap();
+        let int_vec: &Vec<u8> = &u32::to_le_bytes(10535).to_vec();
+        assert_eq!(vm.borrow().read_object(int_pointer).unwrap(), int_vec);
+        vm.borrow_mut().dec_object_count(int_pointer);
+
+        let word_pointer = vm.borrow_mut().stack_pop(false).unwrap();
+        let word_vec: &Vec<u8> = &vec![0xEB, 0x03];
+        assert_eq!(vm.borrow().read_object(word_pointer).unwrap(), word_vec);
+        vm.borrow_mut().dec_object_count(word_pointer);
+
+        let byte_pointer = vm.borrow_mut().stack_pop(false).unwrap();
+        let byte_vec: &Vec<u8> = &vec![5];
+        assert_eq!(vm.borrow().read_object(byte_pointer).unwrap(), byte_vec);
+        vm.borrow_mut().dec_object_count(byte_pointer);
+
+    }
+
+    #[test]
+    pub fn new_stack_object_test() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap();
+        let int = vm.borrow().get_type(PRIM_INT).unwrap();
+        let typ = vm.borrow_mut().new_type(ObjectType { size: 5, types: vec![byte, int], pass_by: PassBy::Reference, id: "aa".to_string() });
+
+        // These push new primitive objects onto the Stack
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 20, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(1).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]).unwrap();
+
+        // Creates a new Object with the "type" of typ, consumes the preversously made primitive objects
+        (get_opcode(0).unwrap().function)(vm.clone(), vec![Operand {direct_value: typ as u64, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
+
+        // Pops the Object and compares it to a constant
+        let object = vm.borrow_mut().stack_pop(false).unwrap();
+        let comp: &Vec<u8> = &vec![5, 20, 0, 0, 0];
+        assert_eq!(vm.borrow().read_object(object).unwrap(), comp);
+        
+        // Some bookkeeping 
+        vm.borrow_mut().dec_object_count(object);
+    }
+
+    #[test]
+    pub fn byte_parsing() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        let program: Vec<u8> = vec![];
+        vm.borrow_mut().write_program(program);
     }
 
     #[test]

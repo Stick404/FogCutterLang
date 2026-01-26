@@ -84,7 +84,7 @@ impl VMState {
             return 4294967295;
         }
         self.struct_ids.push(Rc::new(tpy));
-        self.struct_ids.len() as u32
+        self.struct_ids.len() as u32 -1
     }
 
     pub fn get_type(&self, index: u32) -> Option<Rc<ObjectType>> {
@@ -112,7 +112,7 @@ impl VMState {
         }
         // If theres is no empty slots, make a new one (if it doesn't push the VM over allocated memory)
         if self.allocated_size + (object.object_type.size as u64) < self.max_memory { // TODO: Make this check for memory allocated rather than list length
-            object.location = self.objects.len() as u32 -1;
+            object.location = self.objects.len() as u32;
             self.allocated_size += object.object_type.size as u64;
             self.objects.push(Option::Some(object));
             return Some(self.objects.len() as u32 -1);
@@ -200,6 +200,16 @@ impl VMState {
         }
     }
 
+    pub fn read_object_type(&self, index: u32) -> Option<& Rc<ObjectType>> {
+        let obj = &self.objects[index as usize];
+        return match obj {
+            Some(x) => {
+                Some(& x.object_type)
+            }
+            None => None
+        }
+    }
+
     pub fn inc_object_count(&mut self, index: u32) -> bool {
         let obj = &mut self.objects[index as usize];
         return match obj {
@@ -234,7 +244,7 @@ impl VMState {
 
     // TBH, we have no clue what we are doing, just doing what seems right
     // TODO: Make these all take either pointers or references to an Object, and have the real Objects live in Memory
-    pub fn stack_push(&mut self, object: u32) -> bool {
+    pub fn stack_push(&mut self, object: u32, autoinc: bool) -> bool {
         let obj = match self.objects.get(object as usize) {
             Some(x) => { match x {
                     Some(z) => z,
@@ -249,13 +259,15 @@ impl VMState {
             self.base_pointer = self.stack.len() as u64 +1;
             
         }
-        self.inc_object_count(object);
+        if autoinc {
+            self.inc_object_count(object);
+        }
     
         self.stack.push(object);
         return true;
     }
 
-    pub fn stack_pop(&mut self) -> Option<u32> {
+    pub fn stack_pop(&mut self, autodec: bool) -> Option<u32> {
         let object = self.stack.pop()?;
 
         let obj = match self.objects.get(object as usize) {
@@ -270,7 +282,7 @@ impl VMState {
         // If we are popping a Function Return, we want to set both the Base Pointer and the Program Pointer to where it states
         if obj.object_type.id == self.get_type(PRIM_FN_RT).unwrap().id {
             let mut base: u64 = 0;
-            let mut func: u64 = 0;
+            let mut func: u64;
             let val: &Vec<u8> = obj.get_data();
             func = val[0] as u64;
             func |= (val[1] as u64) << 8;
@@ -285,7 +297,9 @@ impl VMState {
             self.program_pointer = func;
         }
 
-        self.dec_object_count(object);
+        if autodec {
+            self.dec_object_count(object);
+        }
         return Some(object) // Temp
     }
 
