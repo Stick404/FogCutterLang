@@ -1,4 +1,4 @@
-use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::VmRef};
+use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::{ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_TYPE_MISH, VmEmpty, VmRef, VmResult}};
 // An instruction will be: `OpCode Operand[0..x]` x being the count in Operand
 // The ByteCode will be shaped as `Opcode byte 1, Opcode byte 2, Operand Descriptor[x], Operand[x]`
 // This means the smallest bytecode is 2 bytes, with no Operands. But each Operand costs a byte + its byte size (if direct)
@@ -49,7 +49,7 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::VmRef};
 pub struct OpCode {
     pub name: &'static str,                             // Name of the OpCode, used for VM level errors
     pub count: u8,                                      // This is the amount of Operands required for the OpCode, should *never* be more than 255
-    pub function: fn(VmRef, Vec<Operand>) -> Option<()> // This is the function to run, should assume that the Vec is the size of count
+    pub function: fn(VmRef, Vec<Operand>) -> VmEmpty // This is the function to run, should assume that the Vec is the size of count
 }
 
 #[derive(Debug)]
@@ -61,16 +61,16 @@ pub struct Operand {
 }
 
 
-pub fn get_opcode(opcode: u16) -> Option<OpCode> {
+pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
     return match opcode {
         // TODO: Finish this!
-        0 => Some(OpCode { name: "End", count: 0, function: |vm, _| -> Option<()>{
+        0 => Ok(OpCode { name: "End", count: 0, function: |vm, _| -> VmEmpty {
             vm.borrow_mut().running = false;
-            return Some(());
+            return Ok(());
         }}),
 
-        1 => Some(OpCode {name: "New", count: 1, function: |vm, operands| -> Option<()> {
-            let temp = operands.get(0)?;
+        1 => Ok(OpCode {name: "New", count: 1, function: |vm, operands| -> VmEmpty {
+            let temp = operands.get(0).ok_or(ERR_OPERAND)?;
             let typ = vm.borrow().get_type(temp.direct_value as u32)?;
 
             let mut bytes: Vec<u8> = vec![];
@@ -80,8 +80,8 @@ pub fn get_opcode(opcode: u16) -> Option<OpCode> {
                 let y = mu_vm.read_object_type(pnt)?;
 
                 // If the types are wrong, fail
-                if typ.types.get(z)?.id != y.id {
-                    return None;
+                if typ.types.get(z).ok_or(ERR_NO_TYPE)?.id != y.id {
+                    return Err(ERR_TYPE_MISH);
                 }
 
                 match y.pass_by {
@@ -91,7 +91,7 @@ pub fn get_opcode(opcode: u16) -> Option<OpCode> {
                             bytes.push(*byte);
                         }
                         // Because a new reference of it is being stored in the Struct, we inc its count
-                        mu_vm.inc_object_count(pnt);
+                        mu_vm.inc_object_count(pnt)?;
                     },
                     PassBy::Value => {
                         for byte in mu_vm.read_object(pnt)? {
@@ -99,16 +99,16 @@ pub fn get_opcode(opcode: u16) -> Option<OpCode> {
                         }
                     }
                 }
-                mu_vm.dec_object_count(pnt);
+                mu_vm.dec_object_count(pnt)?;
             }
             let obj = Object::new_object(typ, vm.clone())?;
-            vm.borrow_mut().write_object(obj, bytes);
-            vm.borrow_mut().stack_push(obj, false);
-            return Some(());
+            vm.borrow_mut().write_object(obj, bytes)?;
+            vm.borrow_mut().stack_push(obj, false)?;
+            return Ok(());
         }}),
 
-        2 => Some(OpCode { name: "PshPrm", count: 1, function: |vm, operands| -> Option<()> {
-            let operand = operands.get(0)?;
+        2 => Ok(OpCode { name: "PshPrm", count: 1, function: |vm, operands| -> VmEmpty {
+            let operand = operands.get(0).ok_or(ERR_OPERAND)?;
             let typ = vm.borrow().get_type(match operand.size {
                 Size::Byte => 0,
                 Size::Word => 1,
@@ -123,11 +123,11 @@ pub fn get_opcode(opcode: u16) -> Option<OpCode> {
                 Size::Long => u64::to_le_bytes(operand.direct_value as u64).to_vec(),
             };
 
-            vm.borrow_mut().write_object(obj, vec);
-            vm.borrow_mut().stack_push(obj, false);
-            return Some(());
+            vm.borrow_mut().write_object(obj, vec)?;
+            vm.borrow_mut().stack_push(obj, false)?;
+            return Ok(());
         }}),
-        _ => None,
+        _ => Err(ERR_NO_OP_CODE),
     }
 }
 

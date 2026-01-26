@@ -15,7 +15,7 @@ mod tests {
         let object = Object::new_object(typ.clone(), vm.clone()).unwrap();
 
         // Writes to new Object, then reads from it
-        vm.borrow_mut().write_object(object, vec![0xFF]);
+        vm.borrow_mut().write_object(object, vec![0xFF]).unwrap();
         assert_eq!(vm.borrow().read_object(object).unwrap()[0], 0xFF);
     }
 
@@ -29,12 +29,12 @@ mod tests {
 
         // Creates an Object within the VM, starts with a Ref count of 1
         let address = Object::new_object(typ.clone(), vm.clone()).unwrap();
-        vm.borrow_mut().write_object(address, vec![0xFF]);
+        vm.borrow_mut().write_object(address, vec![0xFF]).unwrap();
 
         // Sets the count to 0 (so its cleaned up)
-        vm.borrow_mut().dec_object_count(address);
+        vm.borrow_mut().dec_object_count(address).unwrap();
         // Checks that the Object has been cleaned up
-        assert!(vm.borrow().read_object(address).is_none());
+        assert!(vm.borrow().read_object(address).is_err());
         println!("Hello World")
     }
 
@@ -51,11 +51,11 @@ mod tests {
         }
         
         for obj in &objs {
-            vm.borrow_mut().dec_object_count(*obj);
+            vm.borrow_mut().dec_object_count(*obj).unwrap();
         }
 
         for obj in &objs {
-            assert!(vm.borrow().read_object(*obj).is_none())
+            assert!(vm.borrow().read_object(*obj).is_err())
         }
     }
 
@@ -72,21 +72,21 @@ mod tests {
         let address_3 = Object::new_object(typ.clone(), vm.clone()).unwrap();
 
         // Clears address_1
-        vm.borrow_mut().dec_object_count(address_1);
+        vm.borrow_mut().dec_object_count(address_1).unwrap();
         // Makes sure address 1 is cleared
-        assert!(vm.borrow().read_object(address_1).is_none());
+        assert!(vm.borrow().read_object(address_1).is_err());
 
         // Creates new Object, makes sure it filled in Address 0
         let address_4 = Object::new_object(typ.clone(), vm.clone()).unwrap();
         assert_eq!(address_4, 0);
 
         // Makes sure the Object still exists after 1 inc and 1 dec
-        vm.borrow_mut().inc_object_count(address_2);
-        vm.borrow_mut().dec_object_count(address_2);
-        assert!(vm.borrow().read_object(address_2).is_some());
+        vm.borrow_mut().inc_object_count(address_2).unwrap();
+        vm.borrow_mut().dec_object_count(address_2).unwrap();
+        assert!(vm.borrow().read_object(address_2).is_ok());
 
         // Makes sure that address_3 has not been affected
-        assert!(vm.borrow().read_object(address_3).is_some());
+        assert!(vm.borrow().read_object(address_3).is_ok());
     }
 
     #[test]
@@ -109,18 +109,18 @@ mod tests {
         let basic_2 =    Object::new_object(typ.clone(), vm.clone()).unwrap();
         
         // Writes the data to basic_1 and basic_2
-        vm.borrow_mut().write_object(basic_1, vec![1]);
-        vm.borrow_mut().write_object(basic_2, vec![2]);
+        vm.borrow_mut().write_object(basic_1, vec![1]).unwrap();
+        vm.borrow_mut().write_object(basic_2, vec![2]).unwrap();
 
         
         // Attempts to Write to the Struct with the correct types, and Reads to check that it worked
-        assert!(vm.borrow_mut().write_object_typed(stc_object, vec![basic_1, basic_2]));
+        assert!(vm.borrow_mut().write_object_typed(stc_object, vec![basic_1, basic_2]).is_ok());
         assert_eq!(vm.borrow().read_object(stc_object).unwrap(), &vec![1, 2]);
 
         // Creates a wrongly typed Object
         let wrong = Object::new_object(wrong_typ.clone(), vm.clone()).unwrap();
         // Tries to use the wrongly typed Object in the struct
-        assert!(!vm.borrow_mut().write_object_typed(stc_object, vec![basic_1, wrong]))
+        assert!(vm.borrow_mut().write_object_typed(stc_object, vec![basic_1, wrong]).is_err())
     }
 
     #[test]
@@ -130,10 +130,10 @@ mod tests {
         let vm: VmRef = VMState::default();
         // These push new Primitive Objects onto the Stack
         // Also simulates OpCodes getting called with the right Operands
-        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]);
-        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 1003, true_value: None, size: Size::Word, address_mode: AddressMode::Direct }]);
-        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 10535, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]);
-        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 4679824527, true_value: None, size: Size::Long, address_mode: AddressMode::Direct }]);
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 5, true_value: None, size: Size::Byte, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 1003, true_value: None, size: Size::Word, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 10535, true_value: None, size: Size::Int, address_mode: AddressMode::Direct }]).unwrap();
+        (get_opcode(2).unwrap().function)(vm.clone(), vec![Operand {direct_value: 4679824527, true_value: None, size: Size::Long, address_mode: AddressMode::Direct }]).unwrap();
 
         // Pops a (long) pointer
         let long_pointer = vm.borrow_mut().stack_pop(false).unwrap();
@@ -142,24 +142,24 @@ mod tests {
         // Reads and compare
         assert_eq!(vm.borrow().read_object(long_pointer).unwrap(), long_vec);
         // Clears the long object
-        vm.borrow_mut().dec_object_count(long_pointer);
+        vm.borrow_mut().dec_object_count(long_pointer).unwrap();
 
         // Repeat for Int, Word, and Byte
 
         let int_pointer = vm.borrow_mut().stack_pop(false).unwrap();
         let int_vec: &Vec<u8> = &u32::to_le_bytes(10535).to_vec();
         assert_eq!(vm.borrow().read_object(int_pointer).unwrap(), int_vec);
-        vm.borrow_mut().dec_object_count(int_pointer);
+        vm.borrow_mut().dec_object_count(int_pointer).unwrap();
 
         let word_pointer = vm.borrow_mut().stack_pop(false).unwrap();
         let word_vec: &Vec<u8> = &vec![0xEB, 0x03];
         assert_eq!(vm.borrow().read_object(word_pointer).unwrap(), word_vec);
-        vm.borrow_mut().dec_object_count(word_pointer);
+        vm.borrow_mut().dec_object_count(word_pointer).unwrap();
 
         let byte_pointer = vm.borrow_mut().stack_pop(false).unwrap();
         let byte_vec: &Vec<u8> = &vec![5];
         assert_eq!(vm.borrow().read_object(byte_pointer).unwrap(), byte_vec);
-        vm.borrow_mut().dec_object_count(byte_pointer);
+        vm.borrow_mut().dec_object_count(byte_pointer).unwrap();
 
     }
 
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(vm.borrow().read_object(object).unwrap(), comp);
         
         // Some bookkeeping 
-        vm.borrow_mut().dec_object_count(object);
+        vm.borrow_mut().dec_object_count(object).unwrap();
     }
 
     #[test]

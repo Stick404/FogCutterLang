@@ -1,6 +1,6 @@
 use std::{rc::Rc};
 
-use crate::vm::vm_v4::{vm_state::VmRef};
+use crate::vm::vm_v4::vm_state::{VmRef, VmResult};
 
 #[derive(PartialEq, Debug)]
 pub enum PassBy {
@@ -55,7 +55,7 @@ impl ObjectType {
 
 impl Object {
     // Creates a new Object, if the Option is empty, that means the Object could not be allocated
-    pub fn new_object(object_type: Rc<ObjectType>, vm: VmRef) -> Option<u32> {
+    pub fn new_object(object_type: Rc<ObjectType>, vm: VmRef) -> VmResult<u32> {
         let size = object_type.size;
         let obj = Object { object_type: object_type, references: 1, data: {
             let mut z: Vec<u8> = Vec::with_capacity(size as usize);

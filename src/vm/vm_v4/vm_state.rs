@@ -6,7 +6,7 @@ pub type VmRef = Rc<RefCell<VMState>>;
 pub type VmResult<X> = Result<X, u32>;
 pub type VmEmpty = VmResult<()>;
 
-// TODO: Make a VMReturn type, and Error Codes rather than using `bool`
+// TODO: make a "Get Object" method, and clean *everything* up
 
 #[derive(Debug)]
 pub struct VMState {
@@ -19,7 +19,8 @@ pub struct VMState {
     stack: Vec<u32>,                 // Holds: Function Returns, Function Values, local Function Values
     base_pointer: u64,               // Points to the local "bottom" of the Stack
     program_pointer: u64,            // Points the section in `program` to run
-    pub running: bool,                   // States if this VM is currently running or not
+    pub running: bool,               // States if this VM is currently running or not
+    pub err_code: u32,               // The error code of the program, if not 0 the program has errored
 }
 
 // The Stack, and the Stacking issues
@@ -32,6 +33,16 @@ pub static PRIM_INT : u32 = 2;
 pub static PRIM_LONG: u32 = 3;
 
 pub static PRIM_FN_RT: u32 = 4;
+
+pub static ERR_OOM         : u32 = 1; // When the VM can not allocate more RAM
+pub static ERR_NO_TYPE     : u32 = 2; // When the type can not be found
+pub static ERR_NO_OBJECT   : u32 = 3; // When the VM can not find an Object at the given index
+pub static ERR_TYPE_MISH   : u32 = 4; // When there is a Type Mishmatch
+pub static ERR_OBJECT_WRITE: u32 = 5; // When an Object fails to write
+pub static ERR_STACK_EMPTY : u32 = 6; // When the stack is Empty
+pub static ERR_PROGRAM_READ: u32 = 7; // When theres an error in Program reading
+pub static ERR_OPERAND     : u32 = 8; // When theres an error in reading Operands
+pub static ERR_NO_OP_CODE  : u32 = 9; // When an OpCode can not be found
 
 impl VMState {
     pub fn new(memory: u64) -> VmRef {
@@ -46,6 +57,7 @@ impl VMState {
             base_pointer: 0,
             program_pointer: 0,
             running: false,
+            err_code: 0
         };
         return state.default_types();
     }
@@ -61,7 +73,8 @@ impl VMState {
             stack: vec![],
             base_pointer: 0,
             program_pointer: 0,
-            running: false
+            running: false,
+            err_code: 0
         };
         return state.default_types();
     }
@@ -89,17 +102,17 @@ impl VMState {
         self.struct_ids.len() as u32 -1
     }
 
-    pub fn get_type(&self, index: u32) -> Option<Rc<ObjectType>> {
+    pub fn get_type(&self, index: u32) -> VmResult<Rc<ObjectType>> {
         let typ = self.struct_ids.get(index as usize);
         return match typ {
-            Some(x) => Some(x.clone()),
-            None => None
+            Some(x) => Ok(x.clone()),
+            None => Err(ERR_NO_TYPE)
         }
     }
 
     // This pushs an Object to the first empty slot found
     // If Option is empty, then the VM could not allocate new space
-    pub fn new_object_direct(&mut self, mut object: Object) -> Option<u32> {
+    pub fn new_object_direct(&mut self, mut object: Object) -> VmResult<u32> {
         // Checks to see if there is am empty slot in Memory
         for (count, opt) in self.objects.iter().enumerate() {
             match opt {
@@ -108,7 +121,7 @@ impl VMState {
                     object.location = count as u32;
                     self.allocated_size += object.object_type.size as u64;
                     self.objects[count] = Some(object);
-                    return Some(count as u32)
+                    return VmResult::Ok(count as u32)
                 }
             }
         }
@@ -117,13 +130,13 @@ impl VMState {
             object.location = self.objects.len() as u32;
             self.allocated_size += object.object_type.size as u64;
             self.objects.push(Option::Some(object));
-            return Some(self.objects.len() as u32 -1);
+            return Ok(self.objects.len() as u32 -1);
         }
-        return None;
+        return Err(ERR_OOM);
     }
 
     // Returns true if the operation was a susccess 
-    pub fn write_object(&mut self, index: u32, data: Vec<u8>) -> bool {
+    pub fn write_object(&mut self, index: u32, data: Vec<u8>) -> VmEmpty {
     let obj = &mut self.objects.get_mut(index as usize);
         return match obj {
             Some(x) => {
@@ -131,41 +144,41 @@ impl VMState {
                     Some(y) => {
                         y.clear_data();
                         y.set_data(data);
-                        true
+                        Ok(())
                     }
-                    None => false
+                    None => Err(ERR_NO_OBJECT)
                 }
             }
-            None => false
+            None => Err(ERR_NO_OBJECT)
         }
     }
 
-    pub fn write_object_typed(&mut self, index: u32, objects: Vec<u32>) -> bool{
+    pub fn write_object_typed(&mut self, index: u32, objects: Vec<u32>) -> VmEmpty {
         let mut data: Vec<u8> = vec![];
         let set_object = match self.objects.get(index as usize) {
             Some(x) => match x {
                 Some(z) => z,
-                None => return false
+                None => return Err(ERR_NO_OBJECT)
             },
-            None => return false
+            None => return  Err(ERR_NO_OBJECT)
         };
 
         for (index, address) in objects.iter().enumerate() {
             let object = match self.objects.get(*address as usize) {
                 Some(x) => match x {
                     Some(z) => z,
-                    None => return false
+                    None => return Err(ERR_NO_OBJECT)
                 },
-                None => return false
+                None => return Err(ERR_NO_OBJECT)
             };
             let set_obj_typ = match set_object.object_type.types.get(index) {
                 Some(x) => x.clone(),
-                None => return false
+                None => return Err(ERR_NO_TYPE)
             };
 
             if object.object_type.id != set_obj_typ.id  {
                 // The types did not match up
-                return false;
+                return Err(ERR_TYPE_MISH);
             }
 
             match object.object_type.pass_by {
@@ -185,47 +198,47 @@ impl VMState {
     
         if data.len() != set_object.object_type.size as usize {
             // The data somehow did not match the size of ObjectType's size
-            return false; 
+            return Err(ERR_OBJECT_WRITE); 
         }
 
-        self.write_object(index, data);
-        return true;
+        self.write_object(index, data)?;
+        return Ok(());
     }
 
-    pub fn read_object(&self, index: u32) -> Option<&Vec<u8>> {
+    pub fn read_object(&self, index: u32) -> VmResult<&Vec<u8>> {
         let obj = &self.objects[index as usize];
         return match obj {
             Some(x) => {
-                Some(x.get_data())
+                Ok(x.get_data())
             }
-            None => None
+            None => Err(ERR_NO_OBJECT)
         }
     }
 
-    pub fn read_object_type(&self, index: u32) -> Option<& Rc<ObjectType>> {
+    pub fn read_object_type(&self, index: u32) -> VmResult<&Rc<ObjectType>> {
         let obj = &self.objects[index as usize];
         return match obj {
             Some(x) => {
-                Some(& x.object_type)
+                Ok(& x.object_type)
             }
-            None => None
+            None => Err(ERR_NO_OBJECT)
         }
     }
 
-    pub fn inc_object_count(&mut self, index: u32) -> bool {
+    pub fn inc_object_count(&mut self, index: u32) -> VmEmpty {
         let obj = &mut self.objects[index as usize];
         return match obj {
             Some(x) => {
                 let count = x.get_ref_count();
                 x.set_ref_count(count +1);
-                true
+                Ok(())
             }
-            None => false
+            None => Err(ERR_NO_OBJECT)
         }
     }
 
     // TODO: possibly have this scale `self.objects` down so it wont be a slow/small memory leak
-    pub fn dec_object_count(&mut self, index: u32) -> bool {
+    pub fn dec_object_count(&mut self, index: u32) -> VmEmpty {
         let obj = &mut self.objects[index as usize];
         return match obj {
             Some(x) => {
@@ -234,26 +247,26 @@ impl VMState {
                     // Since the Object is getting removed, we want to remove it from the allocated size
                     self.allocated_size -= x.object_type.size as u64;
                     *obj = None;
-                    return true;
+                    return Ok(());
                 }
                 x.set_ref_count(count);
-                true
+                Ok(())
             }
-            None => false
+            None => Err(ERR_NO_OBJECT)
         }
     }
 
 
     // TBH, we have no clue what we are doing, just doing what seems right
     // TODO: Make these all take either pointers or references to an Object, and have the real Objects live in Memory
-    pub fn stack_push(&mut self, object: u32, autoinc: bool) -> bool {
+    pub fn stack_push(&mut self, object: u32, autoinc: bool) -> VmEmpty {
         let obj = match self.objects.get(object as usize) {
             Some(x) => { match x {
                     Some(z) => z,
-                    None => return false
+                    None => return Err(ERR_NO_OBJECT)
                 }
             }
-            None => return false
+            None => return Err(ERR_NO_OBJECT)
         };
         // If we are pushing a Function Return, reset the Base Pointer to the (current) top of the stack
         if obj.object_type.id == self.get_type(PRIM_FN_RT).unwrap().id {
@@ -262,23 +275,23 @@ impl VMState {
             
         }
         if autoinc {
-            self.inc_object_count(object);
+            self.inc_object_count(object)?;
         }
     
         self.stack.push(object);
-        return true;
+        return Ok(());
     }
 
-    pub fn stack_pop(&mut self, autodec: bool) -> Option<u32> {
-        let object = self.stack.pop()?;
+    pub fn stack_pop(&mut self, autodec: bool) -> VmResult<u32> {
+        let object = self.stack.pop().ok_or(ERR_STACK_EMPTY)?;
 
         let obj = match self.objects.get(object as usize) {
             Some(x) => {match x {
                     Some(z) => z,
-                    None => return None
+                    None => return Err(ERR_NO_OBJECT)
                 }
             }
-            None => return None
+            None => return Err(ERR_NO_OBJECT)
         };
 
         // If we are popping a Function Return, we want to set both the Base Pointer and the Program Pointer to where it states
@@ -300,36 +313,31 @@ impl VMState {
         }
 
         if autodec {
-            self.dec_object_count(object);
+            self.dec_object_count(object)?;
         }
-        return Some(object) // Temp
+        return Ok(object) // Temp
     }
 
     // Returns the Pointer to the object at index
-    pub fn stack_local_var(&mut self, index: u64) -> Option<u32> {
-        let obj: &Object = match self.objects.get((self.base_pointer + index) as usize)? {
-            Some(x) => x,
-            None => return None
-        };
+    pub fn stack_local_var(&mut self, index: u64) -> VmResult<u32> {
+        let obj: &u32 = self.stack.get((self.base_pointer + index) as usize).ok_or(ERR_NO_OBJECT)?;
         
-        return Some(obj.location)
+        return Ok(*obj);
     }
 
     // Returns if it could write the program or not
-    pub fn write_program(&mut self, program: Vec<u8>) -> bool {
+    pub fn write_program(&mut self, program: Vec<u8>) -> VmEmpty {
         if self.max_memory < program.len() as u64 {
-            return false;
+            return Err(ERR_OOM);
         }
         self.allocated_size += program.len() as u64;
         self.program.clear();
         self.program.clone_from(&program);
-        return true;
+        return Ok(());
     }
 
-    pub fn run_program(vm_ref: VmRef, program: Vec<u8>) -> Option<()> {
-        if !vm_ref.borrow_mut().write_program(program) {
-            return None;
-        }
+    pub fn run_program(vm_ref: VmRef, program: Vec<u8>) -> VmEmpty {
+        vm_ref.borrow_mut().write_program(program)?;
         
         // TODO: run a real program
         return VMState::run(vm_ref);
@@ -341,7 +349,7 @@ impl VMState {
 
     // An example ByteCode is: 0x01 0x00| 0x00 | 0x01
     // 0 byte: 
-    pub fn run(vm_ref: VmRef) -> Option<()> {
+    pub fn run(vm_ref: VmRef) -> VmEmpty {
         vm_ref.borrow_mut().program_pointer = 0;
         vm_ref.borrow_mut().running = true;
         while vm_ref.borrow().running {
@@ -375,21 +383,21 @@ impl VMState {
                         operand_value |= (vm_ref.borrow_mut().read_program_byte()? as u64) << count*8;
                     }
                     
-                    operands.get_mut( operads_len)?.direct_value = operand_value;
+                    operands.get_mut( operads_len).ok_or(ERR_OPERAND)?.direct_value = operand_value;
                 }
                 read_operand_description = !read_operand_description;
             }
             // Operands is now fully ready to be passed into the OpCode
             // Thus we run the OpCode
 
-            (op_code.function)(vm_ref.clone(), operands);
+            (op_code.function)(vm_ref.clone(), operands)?;
         }
-        return Some(());
+        return Ok(());
     }
 
-    pub fn read_program_byte(&mut self) -> Option<u8> {
-        let z = *self.program.get(self.program_pointer as usize)?;
+    pub fn read_program_byte(&mut self) -> VmResult<u8> {
+        let z = *self.program.get(self.program_pointer as usize).ok_or(ERR_PROGRAM_READ)?;
         self.program_pointer += 1;
-        return Some(z);
+        return Ok(z);
     }
 }
