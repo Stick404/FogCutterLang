@@ -11,16 +11,16 @@ pub type VmEmpty = VmResult<()>;
 #[derive(Debug)]
 pub struct VMState {
     struct_list: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
-    struct_ids: HashMap<String, u32>,  // All known ObjectTypes
-    objects: Vec<Option<Object>>,    // All Objects held within the VM, they can either be Empty, or Used
-    program: Vec<u8>,                // The program this VMState will run, this is counted in allocated_size
-    max_memory: u64,                 // Max memory in bytes allocated to hold Objects
-    allocated_size: u64,             // Current memory of bytes allocated (not recalculated)
-    stack: Vec<u32>,                 // Holds: Function Returns, Function Values, local Function Values
-    base_pointer: u64,               // Points to the local "bottom" of the Stack
-    program_pointer: u64,            // Points the section in `program` to run
-    pub running: bool,               // States if this VM is currently running or not
-    pub err_code: u32,               // The error code of the program, if not 0 the program has errored
+    struct_ids: HashMap<String, u32>, /// All known ObjectTypes
+    objects: Vec<Option<Object>>,     // All Objects held within the VM, they can either be Empty, or Used
+    program: Vec<u8>,                 // The program this VMState will run, this is counted in allocated_size
+    max_memory: u64,                  // Max memory in bytes allocated to hold Objects
+    allocated_size: u64,              // Current memory of bytes allocated (not recalculated)
+    stack: Vec<u32>,                  // Holds: Function Returns, Function Values, local Function Values
+    base_pointer: u64,                // Points to the local "bottom" of the Stack
+    program_pointer: u64,             // Points the section in `program` to run
+    pub running: bool,                // States if this VM is currently running or not
+    pub err_code: u32,                // The error code of the program, if not 0 the program has errored
 }
 
 // The Stack, and the Stacking issues
