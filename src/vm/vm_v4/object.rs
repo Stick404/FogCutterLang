@@ -1,4 +1,4 @@
-use std::{rc::Rc};
+use std::{collections::VecDeque, rc::Rc};
 
 use crate::vm::vm_v4::vm_state::{VmRef, VmResult};
 
@@ -6,6 +6,21 @@ use crate::vm::vm_v4::vm_state::{VmRef, VmResult};
 pub enum PassBy {
     Value,    // Does a shallow copy
     Reference // Returns the pointer
+}
+impl PassBy {
+    pub fn to_byte(&self) -> u8 {
+        return match self {
+            PassBy::Value => 0,
+            PassBy::Reference => 1,
+        }
+    } 
+
+    pub fn from_bytes(byte: u8) -> Self {
+        return match byte {
+            0 => PassBy::Value,
+            _ => PassBy::Reference
+        }
+    }
 }
 
 // This describes a type of an Object
@@ -29,7 +44,6 @@ pub struct Object {
 
 impl ObjectType {
     // TODO: make the "constructors" have
-
     // Declares a "primitive," an ObjectType that does not depend on another type(s)
     pub fn new_primitive(size: u32, id: &str, vm: &mut VmRef) -> Rc<ObjectType> {
         let z = ObjectType { size: size, types: vec![], pass_by: PassBy::Value, id: id.to_string() };
@@ -50,6 +64,89 @@ impl ObjectType {
 
         let z = ObjectType { size: size, types: types, pass_by: pass_by, id: id };
         return vm.borrow_mut().new_type(z);
+    }
+
+    // Formatted like: Size of ID, ID, Byte Size, PassBy Type, SubType Count, SubId Length-N, SubId-N
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut vec: Vec<u8> = vec![];
+        // ID Length
+        // If the ID is larger than 255, there are other issues
+        vec.push(self.id.len() as u8);
+
+        // ID
+        for char in self.id.as_bytes() {
+            vec.push(*char);
+        }
+
+        // Byte Size
+        let typ_size = & mut self.size.to_be_bytes().to_vec();
+        vec.append(typ_size);
+
+        // PassBy type
+        vec.push(self.pass_by.to_byte());
+
+        // Again, if struct has more than 255 sub types, theres other problems
+        vec.push(self.types.len() as u8);
+
+        for typ in &self.types {
+            // SubType ID Length
+            vec.push(typ.id.len() as u8);
+
+            // SubType ID
+            for char in typ.id.as_bytes() {
+                vec.push(*char);
+            }    
+        }
+
+        return vec;
+    }
+    // The bytes might be malformed, so we return an Option *just* in case
+    pub fn from_bytes(mut vec: VecDeque<u8>, vm: VmRef) -> Option<ObjectType> {
+        let id_length = vec.pop_front()?;
+
+        let mut id_utf8: Vec<u8> = vec![];
+        for _ in 0..id_length {
+            id_utf8.push(vec.pop_front()?);
+        }
+
+        let id = match String::from_utf8(id_utf8) {
+            Ok(x) => x,
+            Err(_) => return None,
+        };
+
+        let byte_size = u32::from_be_bytes([
+            vec.pop_front()?,
+            vec.pop_front()?,
+            vec.pop_front()?,
+            vec.pop_front()?
+            ]);
+
+        let pass_by = PassBy::from_bytes(vec.pop_front()?);
+
+
+        let mut sub_typs: Vec<Rc<ObjectType>> = vec![];
+        // Gets how many sub types there *should* be
+        for _ in 0..vec.pop_front()? {
+            let size = vec.pop_front()?;
+
+            let mut id_utf8: Vec<u8> = vec![];
+            for _ in 0..size {
+                id_utf8.push(vec.pop_front()?);
+            }
+            let string = match String::from_utf8(id_utf8) {
+                Ok(x) => x,
+                Err(_) => return None,
+            };
+
+            let typ = match vm.borrow().get_type_string(&string) {
+                Ok(x) => x,
+                Err(_) => return None,
+            };
+
+            sub_typs.push(typ);
+        }
+
+        return Some(ObjectType { size: byte_size, types: sub_typs, pass_by, id });
     }
 }
 

@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use crate::vm::vm_v4::{bytecode::{AddressMode, Operand, Size, get_opcode}, object::{Object, ObjectType, PassBy}, vm_state::{VMState, *}};
     use crate::vm::vm_v4::vm_state::VmRef;
 
@@ -223,6 +225,58 @@ mod tests {
         let object = vm.borrow_mut().stack_pop(false).unwrap();
         let comp: &Vec<u8> = &vec![5, 20, 0, 0, 0];
         assert_eq!(vm.borrow().read_object(object).unwrap(), comp);
+    }
+
+    #[test]
+    // Tests Serlizing/Unserlizing of a Primitive ObjectType
+    pub fn basic_serialize_object_type() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+
+        // Gets the type for Byte
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
+        // Serlizes Byte to a Byte Array
+        let serz = typ.to_bytes();
+
+        print!("{serz:?}");
+
+        // Unserlizes the Byte Array to an ObjectType
+        let unserz = ObjectType::from_bytes(VecDeque::from(serz), vm).unwrap();
+
+        let re_type = typ.as_ref();
+        // Does deeper sanity checks to make sure the Serlizing/Deserlizing worked
+        assert_eq!(unserz.id, re_type.id);
+        assert_eq!(unserz.pass_by, re_type.pass_by);
+        assert_eq!(unserz.size, re_type.size);
+        assert_eq!(unserz.types.len(), re_type.types.len());
+    }
+
+    #[test]
+    // Tests Serlizing/Unserlizing of a Complex ObjectType (Struct)
+    pub fn complex_serialize_object_type() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+
+        // Gets a basic Byte ObjectType
+        let typ = vm.borrow().get_type(PRIM_BYTE).unwrap();
+
+        // Creates a new Struct called "struct" of Object of Byte, Byte
+        let stc_pointer = ObjectType::new_struct(vec![typ.clone(), typ.clone()], "struct".to_string(), PassBy::Reference, &mut vm.clone());
+        // Gets the ObjectType "struct"
+        let stc_type = vm.borrow().get_type(stc_pointer).unwrap();
+        // Serlizes "struct" to a Byte Array
+        let serz = stc_type.to_bytes();
+
+        print!("{serz:?}");
+
+        // Unserlizes the Byte Array to an ObjectType
+        let unserz = ObjectType::from_bytes(VecDeque::from(serz), vm).unwrap();
+        let re_type = stc_type.as_ref();
+        // Does deeper sanity checks to make sure the Serlizing/Deserlizing worked
+        assert_eq!(unserz.id, re_type.id);
+        assert_eq!(unserz.pass_by, re_type.pass_by);
+        assert_eq!(unserz.size, re_type.size);
+        assert_eq!(unserz.types.len(), re_type.types.len());
     }
 
     #[test]

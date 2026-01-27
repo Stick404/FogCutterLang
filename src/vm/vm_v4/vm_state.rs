@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc, u64};
+use std::{cell::RefCell, collections::{HashMap}, rc::Rc, u32, u64};
 
 use crate::vm::{vm_v4::{bytecode::*, object::{Object, ObjectType, PassBy}}};
 
@@ -10,8 +10,8 @@ pub type VmEmpty = VmResult<()>;
 
 #[derive(Debug)]
 pub struct VMState {
-    struct_ids: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
-    struct_hashes: HashSet<String>,  // All known ObjectTypes
+    struct_list: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
+    struct_ids: HashMap<String, u32>,  // All known ObjectTypes
     objects: Vec<Option<Object>>,    // All Objects held within the VM, they can either be Empty, or Used
     program: Vec<u8>,                // The program this VMState will run, this is counted in allocated_size
     max_memory: u64,                 // Max memory in bytes allocated to hold Objects
@@ -34,21 +34,22 @@ pub static PRIM_LONG: u32 = 3;
 
 pub static PRIM_FN_RT: u32 = 4;
 
-pub static ERR_OOM         : u32 = 1; // When the VM can not allocate more RAM
-pub static ERR_NO_TYPE     : u32 = 2; // When the type can not be found
-pub static ERR_NO_OBJECT   : u32 = 3; // When the VM can not find an Object at the given index
-pub static ERR_TYPE_MISH   : u32 = 4; // When there is a Type Mishmatch
-pub static ERR_OBJECT_WRITE: u32 = 5; // When an Object fails to write
-pub static ERR_STACK_EMPTY : u32 = 6; // When the stack is Empty
-pub static ERR_PROGRAM_READ: u32 = 7; // When theres an error in Program reading
-pub static ERR_OPERAND     : u32 = 8; // When theres an error in reading Operands
-pub static ERR_NO_OP_CODE  : u32 = 9; // When an OpCode can not be found
+pub static ERR_OOM         : u32 =  1; // When the VM can not allocate more RAM
+pub static ERR_NO_TYPE     : u32 =  2; // When the type can not be found
+pub static ERR_NO_OBJECT   : u32 =  3; // When the VM can not find an Object at the given index
+pub static ERR_TYPE_MISH   : u32 =  4; // When there is a Type Mishmatch
+pub static ERR_OBJECT_WRITE: u32 =  5; // When an Object fails to write
+pub static ERR_STACK_EMPTY : u32 =  6; // When the stack is Empty
+pub static ERR_PROGRAM_READ: u32 =  7; // When theres an error in Program reading
+pub static ERR_OPERAND     : u32 =  8; // When theres an error in reading Operands
+pub static ERR_NO_OP_CODE  : u32 =  9; // When an OpCode can not be found
+pub static ERR_PROGRAM_SHUT: u32 = 10; // When a program does not exit correctly
 
 impl VMState {
     pub fn new(memory: u64) -> VmRef {
         let state = VMState {
-            struct_ids: vec![],
-            struct_hashes: HashSet::new(),
+            struct_list: vec![],
+            struct_ids: HashMap::new(),
             objects: vec![],
             program: vec![],
             max_memory: memory,
@@ -57,15 +58,15 @@ impl VMState {
             base_pointer: 0,
             program_pointer: 0,
             running: false,
-            err_code: 0
+            err_code: u32::MAX
         };
         return state.default_types();
     }
 
     pub fn default() -> VmRef {
         let state = VMState {
-            struct_ids: vec![],
-            struct_hashes: HashSet::new(),
+            struct_list: vec![],
+            struct_ids: HashMap::new(),
             objects: vec![],
             program: vec![],
             max_memory: 1024,
@@ -74,7 +75,7 @@ impl VMState {
             base_pointer: 0,
             program_pointer: 0,
             running: false,
-            err_code: 0
+            err_code: u32::MAX
         };
         return state.default_types();
     }
@@ -95,15 +96,24 @@ impl VMState {
 
     // Registiers a new type of the VMState, returns the Index, if this fails, this returns u32.MAX
     pub fn new_type(&mut self, tpy: ObjectType) -> u32 {
-        if !self.struct_hashes.insert(tpy.id.clone()) {
+        if self.struct_ids.contains_key(&tpy.id) {
             return 4294967295;
         }
-        self.struct_ids.push(Rc::new(tpy));
-        self.struct_ids.len() as u32 -1
+        self.struct_list.push(Rc::new(tpy));
+        
+        let x= self.struct_list.len() as u32 -1;
+        let id = self.struct_list.get(x as usize).unwrap().clone().id.clone();
+        self.struct_ids.insert(id, x);
+        return x;
+    }
+
+    pub fn get_type_string(&self, string: &String) -> VmResult<Rc<ObjectType>> {
+        let x = self.struct_ids.get(string).ok_or(ERR_NO_TYPE)?;
+        return self.get_type(*x);
     }
 
     pub fn get_type(&self, index: u32) -> VmResult<Rc<ObjectType>> {
-        let typ = self.struct_ids.get(index as usize);
+        let typ = self.struct_list.get(index as usize);
         return match typ {
             Some(x) => Ok(x.clone()),
             None => Err(ERR_NO_TYPE)
@@ -391,6 +401,14 @@ impl VMState {
             // Thus we run the OpCode
 
             (op_code.function)(vm_ref.clone(), operands)?;
+
+            if vm_ref.borrow().err_code != u32::MAX && vm_ref.borrow().err_code != 0 {
+                return Err(vm_ref.borrow().err_code);
+            }
+        }
+        
+        if vm_ref.borrow().err_code != 0 {
+            return Err(ERR_PROGRAM_SHUT);
         }
         return Ok(());
     }

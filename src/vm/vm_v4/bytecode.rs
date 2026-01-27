@@ -46,6 +46,37 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::{ERR_NO_OP_CODE, ERR_
     ```
   */
 
+ /*
+    The Format of Assembled Programs will likely be like
+    ```
+    Header:
+        Program Start Index
+        Compiled Date
+        FogCutter Version
+        
+    Struct Declirations:
+        Struct{count:TypeID, count:TypeID}
+        Struct{count:TypeID, count:TypeID}
+        Struct{count:TypeID}
+        Struct{count:TypeID}
+    
+    Program:
+        Instruction
+        Instruction
+        Instruction
+        Instruction
+    ```
+    The Header contains all the random bits of Meta Data in known formats
+        - Where to start the program u64 of byte offsets
+        - The structs that are used in the program
+        - The compiled FC version, etc
+    The Struct Declriations states all the structs that the program uses.
+        - Uses TypeID in the basic Delclirations
+        - TypeIDs gets converted into indexes when the program first starts
+    The Program stores all the instructions and 
+
+ */
+
 pub struct OpCode {
     pub name: &'static str,                             // Name of the OpCode, used for VM level errors
     pub count: u8,                                      // This is the amount of Operands required for the OpCode, should *never* be more than 255
@@ -66,6 +97,7 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
         // TODO: Finish this!
         0 => Ok(OpCode { name: "End", count: 0, function: |vm, _| -> VmEmpty {
             vm.borrow_mut().running = false;
+            vm.borrow_mut().err_code = 0;
             return Ok(());
         }}),
 
