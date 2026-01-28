@@ -15,3 +15,4 @@ This file contains the defitnitions to all the Fog Cutter specific short hands u
 systems. The Bus lets FC programs tell the FC-VM to send byte arrays and Objects to the program hosting the FC-VM
 
 * Objects, this is the data stored inside of a FC program. Objects are anything that holds data and that can be passed around inside of a FC program.
+
