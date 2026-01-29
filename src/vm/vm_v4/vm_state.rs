@@ -2,16 +2,16 @@ use std::{cell::RefCell, collections::{HashMap}, rc::Rc, u32, u64};
 
 use crate::vm::{vm_v4::{bytecode::*, object::{Object, ObjectType, PassBy}}};
 
+// TODO: make a "Get Object" method, and clean *everything* up
+
 pub type VmRef = Rc<RefCell<VMState>>;
 pub type VmResult<X> = Result<X, u32>;
 pub type VmEmpty = VmResult<()>;
 
-// TODO: make a "Get Object" method, and clean *everything* up
-
 #[derive(Debug)]
 pub struct VMState {
     struct_list: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
-    struct_ids: HashMap<String, u32>, /// All known ObjectTypes
+    struct_ids: HashMap<String, u32>, // All known ObjectTypes
     objects: Vec<Option<Object>>,     // All Objects held within the VM, they can either be Empty, or Used
     program: Vec<u8>,                 // The program this VMState will run, this is counted in allocated_size
     max_memory: u64,                  // Max memory in bytes allocated to hold Objects
@@ -34,6 +34,7 @@ pub static PRIM_LONG: u32 = 3;
 
 pub static PRIM_FN_RT: u32 = 4;
 
+pub static ERR_FAILED_END  : u32 =  u32::MAX;
 pub static ERR_OOM         : u32 =  1; // When the VM can not allocate more RAM
 pub static ERR_NO_TYPE     : u32 =  2; // When the type can not be found
 pub static ERR_NO_OBJECT   : u32 =  3; // When the VM can not find an Object at the given index
@@ -91,6 +92,15 @@ impl VMState {
         // This is used for Stack Calls, once a type of "function return" is ran
         // This stores 2 ints (pointers), first one is to the point in the Program to jump back to, second one is the old Base Pointer
         ObjectType::new_primitive(8, "function_return", &mut vm_ref);
+        let vm_typ = vm_ref.borrow().get_type(2).unwrap();
+
+        // This is used for Linked Lists/Arrays
+        ObjectType::new_struct(vec![
+            vm_typ.clone(), // The first int is for the type of the held Object
+            vm_typ.clone(), // The second int is used for the held Object Pointer
+            vm_typ  // The third int is used for the next Cell in the Linked List
+                                                  // If this is u32::MAX, then this is the end of the list
+        ], "linked_list".to_string(), PassBy::Reference, &mut vm_ref.clone());
         return vm_ref;
     }
 

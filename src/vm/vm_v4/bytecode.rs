@@ -17,21 +17,6 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::{ERR_NO_OP_CODE, ERR_
     Bus, UNIMPLEMENTED, DO *NOT* USE
  */
 
- /* Op Codes:
-    - End    () This Ends the current running Program
-    - New    (ix1) This creates an Object with the bytes ontop of the stack
-    - PshPrm (ix1) This pushes a built-in primitive onto the Stack
-    - LrdMem (ix1) This pushes an Object in memory onto the stack (auto incs loaded Object)
-    - PutMem () This puts an Object on the stack into Memory, pushes the pointer back onto the Stack
-    - Dup    () Duplicates the top Object, if its a pass by reference, it dups the reference
-    - Pul    (ix1) Pulls the Object at x1 to the top
-    - Add    () This adds a built-in primitive at the top of the Stack
-    - Sub    () This subs a built-in primitive at the top of the Stack
-    - Mul    () This multiples a built-in primitive at the top of the Stack
-    - Jmp    (ix1)
-    - JmpGr  (ix1, ix2, ix3)
- */
-
  /*
     Whenever a function is called, a new "stack frame" is pushed, which at index 0 holds the "Function Return" and variables.
     The Function Return states where in the code to return too, and where the stack base used to be.
@@ -91,6 +76,25 @@ pub struct Operand {
     pub address_mode: AddressMode,  // Address Mode of the Operand
 }
 
+ /* Op Codes:
+    - End    () This Ends the current running Program
+
+    - New    (ix1) This creates an Object with the bytes ontop of the stack
+    - PshPrm (ix1) This pushes a built-in primitive onto the Stack
+    - Dup    () Duplicates the top Object, if its a pass by reference, it dups the reference
+
+    - PshLst (ix1) This creates a Linked Array with the type of (x1)
+    - SetIdx () This takes an array on top of the stack, an int, and an Object Pointer; and inserts the Object Pointer to that index (int) in the list
+    - GetIdx () This takes an array on top of the stack, and an int; and pushes the Object Pointer in the array at the index (int) to the stack
+    - IdxOf  () This takes an array, and an Object Pointer; and pushes the index (int) of the object to the Stack, pushes u32::MAX if not found
+
+    - Pul    (ix1) Pulls the Object at x1 to the top
+    - Add    () This adds a built-in primitive at the top of the Stack
+    - Sub    () This subs a built-in primitive at the top of the Stack
+    - Mul    () This multiples a built-in primitive at the top of the Stack
+    - Jmp    (ix1)
+    - JmpGr  (ix1, ix2, ix3)
+ */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
     return match opcode {
@@ -159,6 +163,32 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             vm.borrow_mut().stack_push(obj, false)?;
             return Ok(());
         }}),
+
+        3 => Ok(OpCode { name: "Dup", count: 0, function: |vm, operands| -> VmEmpty {
+            let z = vm.borrow_mut().stack_pop(false)?;
+            
+            //let mut bind = vm.borrow_mut();
+            let typ = vm.borrow().read_object_type(z)?.pass_by;
+            match typ {
+                PassBy::Reference => {
+                    vm.borrow_mut().stack_push(z, true)?;
+                },
+
+                PassBy::Value => {
+                    let bytes = vm.borrow().read_object(z).clone()?.clone();
+                    let obj_typ = vm.borrow().read_object_type(z)?.clone();
+                    let new_obj = Object::new_object(obj_typ, vm.clone())?;
+                    vm.borrow_mut().write_object(new_obj, bytes)?;
+
+                    vm.borrow_mut().stack_push(new_obj, false)?;
+                }
+            }
+            
+            vm.borrow_mut().stack_push(z, false)?;
+            //vm.borrow_mut().dec_object_count(z)?;
+            return Ok(());
+        }}),
+
         _ => Err(ERR_NO_OP_CODE),
     }
 }

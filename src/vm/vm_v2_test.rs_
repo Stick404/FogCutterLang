@@ -1,7 +1,7 @@
 #[cfg(test)]
 // test
 mod tests {
-    use crate::vm_v2::*;
+    use crate::vm::vm_v2::*;
 
     #[test]
     fn memory_read_write() { // Tests basic memory writing

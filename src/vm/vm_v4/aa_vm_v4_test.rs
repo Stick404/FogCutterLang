@@ -280,6 +280,40 @@ mod tests {
     }
 
     #[test]
+    pub fn op_code_dup() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap();
+        // Gets the Int ObjectType
+        let int = vm.borrow().get_type(PRIM_INT).unwrap();
+
+        // Creates a Struct Object
+        let typ = ObjectType::new_struct(vec![byte, int], "aa".to_string(), PassBy::Reference, &mut vm.clone());
+        let program: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000010, /* Direct, Int  */ 0x14, 0x00, 0x00, 0x00, /* 20 */
+
+            0x03, 0x00, /* Dup */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+
+            0x01, 0x00, /* New */ 0b00000000, /* Direct, Byte */ typ as u8, // Shouldn't ever have more than 255 built in types, so this is safe,
+
+            0x03, 0x00, /* Dup */
+
+            0x00, 0x00, /* Ends the program */
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+
+        let dupped = vm.borrow_mut().stack_pop(false).unwrap();
+        let original = vm.borrow_mut().stack_pop(false).unwrap();
+        let primitive = vm.borrow_mut().stack_pop(false).unwrap();
+
+        assert_eq!(dupped, original);
+        assert_ne!(primitive, 0);
+    }
+
+    #[test]
     pub fn rust_why_do_you_do_this_i_am_in_so_much_pain_right_now() {
         // Reserved for the *worst* of Rust
     }

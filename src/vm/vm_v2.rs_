@@ -24,12 +24,12 @@ pub static REG_RS: u8 = 5;
 pub struct VmState {
     // Memory is laid out like: General Memory, Stack Location (stack marches up), Program Location
     memory: Vec<u8>,
-    pub stack_location: u64,
-    pub program_location: u64,
+    pub stack_location: u64,   // Where the stack begins
+    pub program_location: u64, // Where the program begins
     //[0]:r0 [1]:r1 [2]:r2 [3]:r3 [4]:rC [5]:rS [6]:rE [7]:rR [8]:rT
     // Un-used: ~rE, rR, rT
-    registers: [u64; 9],
-    pub op_limit: u64,
+    registers: [u64; 9],       // Basic Registers
+    pub op_limit: u64,         // How many Opcodes can be run before crashing
     ops_ran: u64,
     pub running: bool,
 }
@@ -349,6 +349,7 @@ impl VmState {
             14 => /* DubSub */ self.write_register(2, d2l(l2d(x1_true_value) - l2d(x2_true_value))),
             15 => /* DubMul */ self.write_register(2, d2l(l2d(x1_true_value) * l2d(x2_true_value))),
             16 => /* DubDiv */ self.write_register(2, d2l(l2d(x1_true_value) / l2d(x2_true_value))),
+            // And more...
 
             // TODO: take account of Operand size, oops.
             17 => /* StackPush */ {

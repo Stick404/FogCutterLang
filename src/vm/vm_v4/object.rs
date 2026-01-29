@@ -2,11 +2,12 @@ use std::{collections::VecDeque, rc::Rc};
 
 use crate::vm::vm_v4::vm_state::{VmRef, VmResult};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum PassBy {
     Value,    // Does a shallow copy
     Reference // Returns the pointer
 }
+
 impl PassBy {
     pub fn to_byte(&self) -> u8 {
         return match self {
@@ -29,7 +30,7 @@ pub struct ObjectType {
     pub size: u32,                  // The size in Bytes of the Object
     pub types: Vec<Rc<ObjectType>>, // The "nested" types within this Object
     pub pass_by: PassBy,            // If this type should be pass by Value, or pass by Reference
-    pub id: String                  // String ID of the ObjectType, used for 
+    pub id: String                  // String ID of the ObjectType, used for Serlization
 }
 
 // This describes a created Object
