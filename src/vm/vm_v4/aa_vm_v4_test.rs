@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(typ, "word")
     }
 
-        #[test]
+    #[test]
     fn test_basic_sub() {
         // Creates a VM
         let vm: VmRef = VMState::default();
@@ -353,6 +353,41 @@ mod tests {
         let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
         assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![15, 0]);
         assert_eq!(typ, "word")
+    }
+
+    #[test]
+    fn test_jump_unc() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            11, 0, /* JmpUnc */ 0b00000000, 0x08, /* To byte 8 */
+
+            255, 255, 255, 255, // Wall of "Crash Program"
+            /* byte 8 -> */ 0x00, 0x00, /* Ends the program */
+            255, 255, 255, 255, // Wall of "Crash Program"
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+    }
+
+    #[test]
+    fn test_jump_cnd() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            12, 0, /* CmpEq, should be true */
+            18, 0, 0b00000000, /* Direct, Byte */ 19, /* byte 19, if true */ /* Direct, Byte */ 16, /* byte 16, if false */
+
+            255, 255, 255, 255,
+            0x00, 0x00, /* Ends the program */
+            255, 255, 255, 255,
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
     }
 
     #[test]

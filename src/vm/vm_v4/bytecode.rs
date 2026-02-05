@@ -250,7 +250,6 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             return Ok(());
         }}),
 
-
         _ => Err(ERR_NO_OP_CODE),
     }
 }
@@ -264,7 +263,6 @@ fn get_primitive_value_unsigned(vm: &VmRef) -> VmResult<(u64, Rc<ObjectType>)> {
         let x1_type = vm_mut.get_type(x1_obj)?;
         let x1_data = vm_mut.read_object(x1_obj)?;
         let ret: u64;
-        
         
         // Pretty trash, but it works
         match x1_type.size {
