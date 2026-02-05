@@ -1,4 +1,6 @@
-use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::{ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_TYPE_MISH, VmEmpty, VmRef, VmResult}};
+use std::rc::Rc;
+
+use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_TYPE_MISH, VmEmpty, VmRef, VmResult}};
 // An instruction will be: `OpCode Operand[0..x]` x being the count in Operand
 // The ByteCode will be shaped as `Opcode byte 1, Opcode byte 2, Operand Descriptor[x], Operand[x]`
 // This means the smallest bytecode is 2 bytes, with no Operands. But each Operand costs a byte + its byte size (if direct)
@@ -65,7 +67,7 @@ use crate::vm::vm_v4::{object::{Object, PassBy}, vm_state::{ERR_NO_OP_CODE, ERR_
 pub struct OpCode {
     pub name: &'static str,                             // Name of the OpCode, used for VM level errors
     pub count: u8,                                      // This is the amount of Operands required for the OpCode, should *never* be more than 255
-    pub function: fn(VmRef, Vec<Operand>) -> VmEmpty // This is the function to run, should assume that the Vec is the size of count
+    pub function: fn(VmRef, Vec<Operand>) -> VmEmpty    // This is the function to run, should assume that the Vec is the size of count
 }
 
 #[derive(Debug)]
@@ -92,8 +94,11 @@ pub struct Operand {
     - Add    () This adds a built-in primitive at the top of the Stack
     - Sub    () This subs a built-in primitive at the top of the Stack
     - Mul    () This multiples a built-in primitive at the top of the Stack
-    - Jmp    (ix1)
-    - JmpGr  (ix1, ix2, ix3)
+    - JmpUnc (ix1) This uncondtinally jumps to ix1 in the program
+    - CmpEq  () This compares the top 2 (primitives) values at the top of the stack, equal, and sets `jump_truth`
+    - CmpLs  () This compares the top 2 (primitives) values at the top of the stack, less than, and sets `jump_truth`
+    - CmpGr  () This compares the top 2 (primitives) values at the top of the stack, greater than, and sets `jump_truth`
+    - JmpCon (ix1, ix2)
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
@@ -164,7 +169,7 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             return Ok(());
         }}),
 
-        3 => Ok(OpCode { name: "Dup", count: 0, function: |vm, operands| -> VmEmpty {
+        3 => Ok(OpCode { name: "Dup", count: 0, function: |vm, _operands| -> VmEmpty {
             let z = vm.borrow_mut().stack_pop(false)?;
             
             //let mut bind = vm.borrow_mut();
@@ -188,10 +193,111 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             //vm.borrow_mut().dec_object_count(z)?;
             return Ok(());
         }}),
+        4 | 5 | 6 | 7 | 8 => Err(ERR_NO_OP_CODE), // Place holders for now
+        9 => Ok(OpCode { name: "Add", count: 0, function: |vm, _operands| -> VmEmpty {
+            let add_1 = get_primitive_value_unsigned(&vm)?;
+            let add_2 = get_primitive_value_unsigned(&vm)?;
+
+            let larger_type = if add_1.1.size <= add_2.1.size { add_2.1 } else { add_1.1 };
+            let size = larger_type.size;
+            let added = add_1.0.wrapping_add(add_2.0);
+
+            let obj = Object::new_object(larger_type, vm.clone())?;
+            let data = added.to_le_bytes().to_vec();
+            vm.borrow_mut().write_object(obj, trim_value(&data, size as u8))?;
+            vm.borrow_mut().stack_push(obj, false)?;
+            return Ok(());
+        }}),
+
+        10 => Ok(OpCode { name: "Sub", count: 0, function: |vm, _operands| -> VmEmpty {
+            let add_1 = get_primitive_value_unsigned(&vm)?;
+            let add_2 = get_primitive_value_unsigned(&vm)?;
+
+            let larger_type = if add_1.1.size <= add_2.1.size { add_2.1 } else { add_1.1 };
+            let size = larger_type.size;
+            let added = add_2.0.wrapping_sub(add_1.0);
+            
+            let obj = Object::new_object(larger_type, vm.clone())?;
+            let data = added.to_le_bytes().to_vec();
+            vm.borrow_mut().write_object(obj, trim_value(&data, size as u8))?;
+            vm.borrow_mut().stack_push(obj, false)?;
+            return Ok(());
+        }}),
+
+        11 => Ok(OpCode { name: "JmpUnc", count: 1, function: |vm, operands| -> VmEmpty {
+            let pos = operands.get(0).ok_or(ERR_NO_OBJECT)?.direct_value;
+            vm.borrow_mut().program_pointer = pos;
+            return Ok(());
+        }}),
+
+        12 => Ok(OpCode { name: "CmpEq", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x == y;
+            return Ok(());
+        }}),
+
+        13 | 14 | 15 | 16 | 17 => Err(ERR_NO_OP_CODE), // Place holders for now
+
+        18 => Ok(OpCode { name: "JmpCnd", count: 2, function: |vm, operands | -> VmEmpty {
+            let jmp: u64 = if vm.borrow().jump_trueth {
+                operands.get(0).ok_or(ERR_NO_OBJECT)?.direct_value
+            } else {
+                operands.get(1).ok_or(ERR_NO_OBJECT)?.direct_value
+            };
+
+            vm.borrow_mut().program_pointer = jmp;   
+            return Ok(());
+        }}),
+
 
         _ => Err(ERR_NO_OP_CODE),
     }
 }
+
+// Pops the top value off of the stack, returns error if it is not a valid primitive
+fn get_primitive_value_unsigned(vm: &VmRef) -> VmResult<(u64, Rc<ObjectType>)> {
+    let mut vm_mut: std::cell::RefMut<'_, super::vm_state::VMState> = vm.borrow_mut();
+    let x1_obj = vm_mut.stack_pop(false)?;
+
+    if vm_mut.is_basic_primitive(x1_obj) {
+        let x1_type = vm_mut.get_type(x1_obj)?;
+        let x1_data = vm_mut.read_object(x1_obj)?;
+        let ret: u64;
+        
+        
+        // Pretty trash, but it works
+        match x1_type.size {
+            1 => ret = u8::from_be_bytes([*x1_data.get(0).unwrap_or(&0)]) as u64,
+            2 => ret = u16::from_le_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0)]) as u64,
+            4 => ret = u32::from_be_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0)]) as u64,
+            8 => ret = u64::from_be_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0), *x1_data.get(4).unwrap_or(&0), *x1_data.get(5).unwrap_or(&0), *x1_data.get(6).unwrap_or(&0), *x1_data.get(7).unwrap_or(&0)]) as u64,
+            _ => return Err(ERR_TYPE_MISH)
+        }
+        vm_mut.dec_object_count(x1_obj)?;
+        
+        return Ok((ret, x1_type));
+    } else {
+        return Err(ERR_TYPE_MISH);
+    }
+}
+
+fn trim_value(vec: &Vec<u8>, bytes: u8) -> Vec<u8> {
+    let mut copy = vec.clone();
+    if copy.len() < bytes as usize {
+        for _ in 0..((bytes as usize) -copy.len()) {
+            copy.push(0);
+        }
+    } else if copy.len() > bytes as usize {
+        copy = vec![];
+        for loc in 0..bytes {
+            copy.push(vec[loc as usize]);
+        }
+    }
+
+    return copy;
+}
+
 
 #[derive(Debug)]
 pub enum Size {

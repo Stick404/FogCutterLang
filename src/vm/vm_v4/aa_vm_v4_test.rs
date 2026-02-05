@@ -314,6 +314,48 @@ mod tests {
     }
 
     #[test]
+    fn test_basic_add() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000010, /* Direct, Word  */ 0x14, 0x00, 0x00, 0x00, /* 20 */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+
+            0x09, 0x00, /* Add */ // Should now have w25 on the stack 
+            0x00, 0x00, /* Ends the program */
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+
+        let added = vm.borrow_mut().stack_pop(false).unwrap();
+        let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![25, 0]);
+        assert_eq!(typ, "word")
+    }
+
+        #[test]
+    fn test_basic_sub() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000010, /* Direct, Word  */ 0x14, 0x00, 0x00, 0x00, /* 20 */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+
+            0x0A, 0x00, /* Sub */ // Should now have w15 on the stack 
+            0x00, 0x00, /* Ends the program */
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+
+        let added = vm.borrow_mut().stack_pop(false).unwrap();
+        let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![15, 0]);
+        assert_eq!(typ, "word")
+    }
+
+    #[test]
     pub fn rust_why_do_you_do_this_i_am_in_so_much_pain_right_now() {
         // Reserved for the *worst* of Rust
     }

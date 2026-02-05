@@ -18,9 +18,10 @@ pub struct VMState {
     allocated_size: u64,              // Current memory of bytes allocated (not recalculated)
     stack: Vec<u32>,                  // Holds: Function Returns, Function Values, local Function Values
     base_pointer: u64,                // Points to the local "bottom" of the Stack
-    program_pointer: u64,             // Points the section in `program` to run
+    pub program_pointer: u64,             // Points the section in `program` to run
     pub running: bool,                // States if this VM is currently running or not
     pub err_code: u32,                // The error code of the program, if not 0 the program has errored
+    pub jump_trueth: bool             // States if the VM's next jump should be Jump or not Jump
 }
 
 // The Stack, and the Stacking issues
@@ -59,7 +60,9 @@ impl VMState {
             base_pointer: 0,
             program_pointer: 0,
             running: false,
-            err_code: u32::MAX
+            err_code: u32::MAX,
+            jump_trueth: false,
+
         };
         return state.default_types();
     }
@@ -76,7 +79,8 @@ impl VMState {
             base_pointer: 0,
             program_pointer: 0,
             running: false,
-            err_code: u32::MAX
+            err_code: u32::MAX,
+            jump_trueth: false,
         };
         return state.default_types();
     }
@@ -427,5 +431,23 @@ impl VMState {
         let z = *self.program.get(self.program_pointer as usize).ok_or(ERR_PROGRAM_READ)?;
         self.program_pointer += 1;
         return Ok(z);
+    }
+
+    pub fn is_basic_primitive(&self, pointer: u32) -> bool {
+        let typ = self.read_object_type(pointer);
+        if typ.is_err() {
+            return false;
+        }
+        
+        let type_id = typ.unwrap().id.clone();
+
+        if type_id == "byte"
+        || type_id == "word"
+        || type_id == "int"
+        || type_id == "long" {
+            return true
+        }
+
+        return false;
     }
 }
