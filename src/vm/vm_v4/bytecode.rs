@@ -98,7 +98,7 @@ pub struct Operand {
     - CmpEq  () This compares the top 2 (primitives) values at the top of the stack, equal, and sets `jump_truth`
     - CmpLs  () This compares the top 2 (primitives) values at the top of the stack, less than, and sets `jump_truth`
     - CmpGr  () This compares the top 2 (primitives) values at the top of the stack, greater than, and sets `jump_truth`
-    - JmpCon (ix1, ix2)
+    - JmpCon (ix1, ix2) This takes 2 inputs from the byte code, if jump_truth is true, it jumps to the bytecode at ix1, else it jumps to ix2
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
@@ -237,7 +237,40 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             return Ok(());
         }}),
 
-        13 | 14 | 15 | 16 | 17 => Err(ERR_NO_OP_CODE), // Place holders for now
+        13 => Ok(OpCode { name: "CmpLs", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x < y;
+            return Ok(());
+        }}),
+
+        14 => Ok(OpCode { name: "CmpGr", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x > y;
+            return Ok(());
+        }}),
+        
+        15 => Ok(OpCode { name: "CmpNe", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x != y;
+            return Ok(());
+        }}),
+
+        16 => Ok(OpCode { name: "CmpLsEq", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x <= y;
+            return Ok(());
+        }}),
+
+        17 => Ok(OpCode { name: "CmpGrEq", count: 0, function: |vm, _operands| -> VmEmpty {
+            let x = get_primitive_value_unsigned(&vm)?.0;
+            let y = get_primitive_value_unsigned(&vm)?.0;
+            vm.borrow_mut().jump_trueth = x >= y;
+            return Ok(());
+        }}),
 
         18 => Ok(OpCode { name: "JmpCnd", count: 2, function: |vm, operands | -> VmEmpty {
             let jmp: u64 = if vm.borrow().jump_trueth {
