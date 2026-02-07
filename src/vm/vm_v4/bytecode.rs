@@ -103,7 +103,8 @@ pub struct Operand {
     - JmpCon (ix1, ix2) This takes 2 inputs from the byte code, if jump_truth is true, it jumps to the bytecode at ix1, else it jumps to ix2
 
     - Cal    (ix1) Calls a function at at code ix1
-    - Ret    () Removes all items on the stack until it reaches a "function_return" //TODO: Make this take an ix1 of how many objs to return
+    - Ret    () Removes all items on the stack until it reaches a "function_return"
+    - RetRet (ix1) Acts like Ret, but leaves an object that was at index ix1
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
@@ -290,7 +291,7 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             return Ok(());
         }}),
 
-        19 => Ok(OpCode { name: "Cal", count: 2, function: |vm, operands | -> VmEmpty {
+        19 => Ok(OpCode { name: "Cal", count: 1, function: |vm, operands | -> VmEmpty {
             let len = vm.borrow().stack.len();
 
             let data_1 = &mut vm.borrow().program_pointer.to_be_bytes().to_vec();
@@ -305,7 +306,6 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             
             data.append(data_1);
             data.append(data_2);
-            data.push(operands.get(1).ok_or(ERR_OPERAND)?.direct_value as u8);
 
             vm_mut.write_object(obj, data)?;
             vm_mut.stack_push(obj, false)?;
@@ -325,8 +325,54 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
                 let ts = vm_mut.read_object_type(obj)?;
                 
                 if fr == ts {
-                    let mut base: u64 = 0;
-                    let mut func: u64 = 0;
+                    let mut base: u64;
+                    let mut func: u64;
+                    let val: Vec<u8> = (*vm_mut.read_object(obj)?).clone();
+                    func = val[7] as u64;
+                    func |= (val[6] as u64) << 8;
+                    func |= (val[5] as u64) << 16;
+                    func |= (val[4] as u64) << 24;
+                    func |= (val[3] as u64) << 32;
+                    func |= (val[2] as u64) << 40;
+                    func |= (val[1] as u64) << 48;
+                    func |= (val[0] as u64) << 56;
+
+                    base = val[15] as u64;
+                    base |= (val[14] as u64) << 8;
+                    base |= (val[13] as u64) << 16;
+                    base |= (val[12] as u64) << 24;
+                    base |= (val[11] as u64) << 32;
+                    base |= (val[10] as u64) << 40;
+                    base |= (val[9] as u64) << 48;
+                    base |= (val[8] as u64) << 56;
+                    
+
+                    vm_mut.program_pointer = func;
+                    vm_mut.base_pointer = base;
+
+                    vm_mut.dec_object_count(obj)?;
+                    return Ok(());
+                } else {
+                    vm_mut.dec_object_count(obj)?;
+                }
+            }
+        }}),
+
+        // Im so sorry for this name
+        21 => Ok(OpCode { name: "RetRet", count: 1, function: |vm, operands | -> VmEmpty {        
+            let obj_ret = vm.borrow().stack_local_var(operands.get(0).ok_or(ERR_OPERAND)?.direct_value)?;
+            let mut vm_mut = vm.borrow_mut();
+            vm_mut.inc_object_count(obj_ret)?;
+            
+            let fr = &vm_mut.get_type(PRIM_FN_RT)?;
+            
+            loop {
+                let obj = vm_mut.stack_pop(false)?;
+                let ts = vm_mut.read_object_type(obj)?;
+                
+                if fr == ts {
+                    let mut base: u64;
+                    let mut func: u64;
                     let val: Vec<u8> = (*vm_mut.read_object(obj)?).clone();
                     func = val[7] as u64;
                     func |= (val[6] as u64) << 8;
@@ -348,9 +394,10 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
                     
 
                     vm_mut.base_pointer = base;
-                    vm_mut.program_pointer = func + (val[16] as u64);
+                    vm_mut.program_pointer = func;
 
                     vm_mut.dec_object_count(obj)?;
+                    vm_mut.stack_push(obj_ret, false)?;
                     return Ok(());
                 } else {
                     vm_mut.dec_object_count(obj)?;
@@ -368,16 +415,16 @@ fn get_primitive_value_unsigned(vm: &VmRef) -> VmResult<(u64, Rc<ObjectType>)> {
     let x1_obj = vm_mut.stack_pop(false)?;
 
     if vm_mut.is_basic_primitive(x1_obj) {
-        let x1_type = vm_mut.get_type(x1_obj)?;
+        let x1_type = vm_mut.read_object_type(x1_obj)?.clone();
         let x1_data = vm_mut.read_object(x1_obj)?;
         let ret: u64;
         
         // Pretty trash, but it works
         match x1_type.size {
-            1 => ret = u8::from_be_bytes([*x1_data.get(0).unwrap_or(&0)]) as u64,
+            1 => ret = *x1_data.get(0).unwrap_or(&0) as u64,
             2 => ret = u16::from_le_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0)]) as u64,
-            4 => ret = u32::from_be_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0)]) as u64,
-            8 => ret = u64::from_be_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0), *x1_data.get(4).unwrap_or(&0), *x1_data.get(5).unwrap_or(&0), *x1_data.get(6).unwrap_or(&0), *x1_data.get(7).unwrap_or(&0)]) as u64,
+            4 => ret = u32::from_le_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0)]) as u64,
+            8 => ret = u64::from_le_bytes([*x1_data.get(0).unwrap_or(&0), *x1_data.get(1).unwrap_or(&0), *x1_data.get(2).unwrap_or(&0), *x1_data.get(3).unwrap_or(&0), *x1_data.get(4).unwrap_or(&0), *x1_data.get(5).unwrap_or(&0), *x1_data.get(6).unwrap_or(&0), *x1_data.get(7).unwrap_or(&0)]) as u64,
             _ => return Err(ERR_TYPE_MISH)
         }
         vm_mut.dec_object_count(x1_obj)?;

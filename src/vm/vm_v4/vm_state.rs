@@ -94,9 +94,8 @@ impl VMState {
         ObjectType::new_primitive(8, "long", &mut vm_ref);
 
         // This is used for Stack Calls, once a type of "function return" is ran
-        // This stores 2 longs (pointers), and an offset. First one is to the point in the Program to jump back to, second one is the old Base Pointer
-        // and final byte is a basic return offset from the OpCode's pos
-        ObjectType::new_primitive(17, "function_return", &mut vm_ref);
+        // This stores 2 longs (pointers). First one is to the point in the Program to jump back to, second one is the old Base Pointer
+        ObjectType::new_primitive(16, "function_return", &mut vm_ref);
         let vm_typ = vm_ref.borrow().get_type(2).unwrap();
 
         // This is used for Linked Lists/Arrays
@@ -322,7 +321,7 @@ impl VMState {
     }
 
     // Returns the Pointer to the object at index
-    pub fn stack_local_var(&mut self, index: u64) -> VmResult<u32> {
+    pub fn stack_local_var(&self, index: u64) -> VmResult<u32> {
         let obj: &u32 = self.stack.get((self.base_pointer + index) as usize).ok_or(ERR_NO_OBJECT)?;
         
         return Ok(*obj);
@@ -342,7 +341,6 @@ impl VMState {
     pub fn run_program(vm_ref: VmRef, program: Vec<u8>) -> VmEmpty {
         vm_ref.borrow_mut().write_program(program)?;
         
-        // TODO: run a real program
         return VMState::run(vm_ref);
     }
 
