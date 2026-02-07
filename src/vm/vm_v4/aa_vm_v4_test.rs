@@ -330,8 +330,8 @@ mod tests {
 
         let added = vm.borrow_mut().stack_pop(false).unwrap();
         let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
-        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![25, 0]);
-        assert_eq!(typ, "word")
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![25, 0, 0, 0]);
+        assert_eq!(typ, "int")
     }
 
     #[test]
@@ -351,8 +351,8 @@ mod tests {
 
         let added = vm.borrow_mut().stack_pop(false).unwrap();
         let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
-        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![15, 0]);
-        assert_eq!(typ, "word")
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![15, 0, 0, 0]);
+        assert_eq!(typ, "int")
     }
 
     #[test]
@@ -396,7 +396,7 @@ mod tests {
         let vm: VmRef = VMState::default();
         // Gets the Byte ObjectType
         let program: Vec<u8> = vec![
-            19, 0, 0b00000000, 12, 0b00000000, 0, // Calls byte 10, return to byte 6
+            19, 0, 0b00000000, 10, // Calls byte 10, return to byte 6
 
             0x00, 0x00,
             255, 255, 255, 255,
@@ -406,6 +406,32 @@ mod tests {
         ];
 
         VMState::run_program(vm.clone(), program).unwrap();
+    }
+
+    #[test]
+    fn test_ret_ret() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            19, 0, 0b00000000, 10, // Calls byte 10
+
+            0x00, 0x00,
+            255, 255, 255, 255,
+            /* Byte 10 -> */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            0x09, 0x00, /* Add */ // Should now have b10 on the stack 
+
+            21, 0, 0b00000000, 0, // Returns
+            255, 255, 255, 255,
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+        let added = vm.borrow_mut().stack_pop(false).unwrap();
+        let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![10]);
+        assert_eq!(typ, "byte");
     }
 
     #[test]
