@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_TYPE_MISH, VmEmpty, VmRef, VmResult}};
+use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_TYPE_MISH, PRIM_FN_RT, VmEmpty, VmRef, VmResult}};
 // An instruction will be: `OpCode Operand[0..x]` x being the count in Operand
 // The ByteCode will be shaped as `Opcode byte 1, Opcode byte 2, Operand Descriptor[x], Operand[x]`
 // This means the smallest bytecode is 2 bytes, with no Operands. But each Operand costs a byte + its byte size (if direct)
@@ -90,15 +90,20 @@ pub struct Operand {
     - GetIdx () This takes an array on top of the stack, and an int; and pushes the Object Pointer in the array at the index (int) to the stack
     - IdxOf  () This takes an array, and an Object Pointer; and pushes the index (int) of the object to the Stack, pushes u32::MAX if not found
 
-    - Pul    (ix1) Pulls the Object at x1 to the top
+    - ~~Pul    (ix1) Pulls the Object at x1 to the top~~
+    - Psh
     - Add    () This adds a built-in primitive at the top of the Stack
     - Sub    () This subs a built-in primitive at the top of the Stack
     - Mul    () This multiples a built-in primitive at the top of the Stack
+
     - JmpUnc (ix1) This uncondtinally jumps to ix1 in the program
     - CmpEq  () This compares the top 2 (primitives) values at the top of the stack, equal, and sets `jump_truth`
     - CmpLs  () This compares the top 2 (primitives) values at the top of the stack, less than, and sets `jump_truth`
     - CmpGr  () This compares the top 2 (primitives) values at the top of the stack, greater than, and sets `jump_truth`
     - JmpCon (ix1, ix2) This takes 2 inputs from the byte code, if jump_truth is true, it jumps to the bytecode at ix1, else it jumps to ix2
+
+    - Cal    (ix1) Calls a function at at code ix1
+    - Ret    () Removes all items on the stack until it reaches a "function_return" //TODO: Make this take an ix1 of how many objs to return
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
@@ -193,7 +198,9 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             //vm.borrow_mut().dec_object_count(z)?;
             return Ok(());
         }}),
+
         4 | 5 | 6 | 7 | 8 => Err(ERR_NO_OP_CODE), // Place holders for now
+
         9 => Ok(OpCode { name: "Add", count: 0, function: |vm, _operands| -> VmEmpty {
             let add_1 = get_primitive_value_unsigned(&vm)?;
             let add_2 = get_primitive_value_unsigned(&vm)?;
@@ -281,6 +288,74 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
 
             vm.borrow_mut().program_pointer = jmp;   
             return Ok(());
+        }}),
+
+        19 => Ok(OpCode { name: "Cal", count: 2, function: |vm, operands | -> VmEmpty {
+            let len = vm.borrow().stack.len();
+
+            let data_1 = &mut vm.borrow().program_pointer.to_be_bytes().to_vec();
+            let data_2 = &mut vm.borrow().base_pointer.to_be_bytes().to_vec();
+            vm.borrow_mut().base_pointer = len as u64 +1;
+
+            let typ = vm.borrow_mut().get_type(PRIM_FN_RT)?.clone();
+            let obj = Object::new_object(typ, vm.clone())?;
+            let mut data: Vec<u8> = vec![];
+            let mut vm_mut = vm.borrow_mut();
+
+            
+            data.append(data_1);
+            data.append(data_2);
+            data.push(operands.get(1).ok_or(ERR_OPERAND)?.direct_value as u8);
+
+            vm_mut.write_object(obj, data)?;
+            vm_mut.stack_push(obj, false)?;
+
+            vm_mut.program_pointer = operands.get(0).ok_or(ERR_OPERAND)?.direct_value;
+            
+            return Ok(());
+        }}),
+
+        20 => Ok(OpCode { name: "Ret", count: 0, function: |vm, _operands | -> VmEmpty {        
+            let mut vm_mut = vm.borrow_mut();
+            
+            let fr = &vm_mut.get_type(PRIM_FN_RT)?;
+            
+            loop {
+                let obj = vm_mut.stack_pop(false)?;
+                let ts = vm_mut.read_object_type(obj)?;
+                
+                if fr == ts {
+                    let mut base: u64 = 0;
+                    let mut func: u64 = 0;
+                    let val: Vec<u8> = (*vm_mut.read_object(obj)?).clone();
+                    func = val[7] as u64;
+                    func |= (val[6] as u64) << 8;
+                    func |= (val[5] as u64) << 16;
+                    func |= (val[4] as u64) << 24;
+                    func |= (val[3] as u64) << 32;
+                    func |= (val[2] as u64) << 40;
+                    func |= (val[1] as u64) << 48;
+                    func |= (val[0] as u64) << 56;
+
+                    base = val[15] as u64;
+                    base |= (val[14] as u64) << 8;
+                    base |= (val[13] as u64) << 16;
+                    base |= (val[12] as u64) << 24;
+                    base |= (val[11] as u64) << 32;
+                    base |= (val[10] as u64) << 40;
+                    base |= (val[9] as u64) << 48;
+                    base |= (val[8] as u64) << 56;
+                    
+
+                    vm_mut.base_pointer = base;
+                    vm_mut.program_pointer = func + (val[16] as u64);
+
+                    vm_mut.dec_object_count(obj)?;
+                    return Ok(());
+                } else {
+                    vm_mut.dec_object_count(obj)?;
+                }
+            }
         }}),
 
         _ => Err(ERR_NO_OP_CODE),

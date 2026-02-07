@@ -16,9 +16,9 @@ pub struct VMState {
     program: Vec<u8>,                 // The program this VMState will run, this is counted in allocated_size
     max_memory: u64,                  // Max memory in bytes allocated to hold Objects
     allocated_size: u64,              // Current memory of bytes allocated (not recalculated)
-    stack: Vec<u32>,                  // Holds: Function Returns, Function Values, local Function Values
-    base_pointer: u64,                // Points to the local "bottom" of the Stack
-    pub program_pointer: u64,             // Points the section in `program` to run
+    pub stack: Vec<u32>,              // Holds: Function Returns, Function Values, local Function Values
+    pub base_pointer: u64,            // Points to the local "bottom" of the Stack
+    pub program_pointer: u64,         // Points the section in `program` to run
     pub running: bool,                // States if this VM is currently running or not
     pub err_code: u32,                // The error code of the program, if not 0 the program has errored
     pub jump_trueth: bool             // States if the VM's next jump should be Jump or not Jump
@@ -94,8 +94,9 @@ impl VMState {
         ObjectType::new_primitive(8, "long", &mut vm_ref);
 
         // This is used for Stack Calls, once a type of "function return" is ran
-        // This stores 2 ints (pointers), first one is to the point in the Program to jump back to, second one is the old Base Pointer
-        ObjectType::new_primitive(8, "function_return", &mut vm_ref);
+        // This stores 2 longs (pointers), and an offset. First one is to the point in the Program to jump back to, second one is the old Base Pointer
+        // and final byte is a basic return offset from the OpCode's pos
+        ObjectType::new_primitive(17, "function_return", &mut vm_ref);
         let vm_typ = vm_ref.borrow().get_type(2).unwrap();
 
         // This is used for Linked Lists/Arrays
@@ -167,7 +168,9 @@ impl VMState {
                 match x {
                     Some(y) => {
                         y.clear_data();
-                        y.set_data(data);
+                        if !y.set_data(data) {
+                            return Err(ERR_OBJECT_WRITE);
+                        }
                         Ok(())
                     }
                     None => Err(ERR_NO_OBJECT)
@@ -292,12 +295,6 @@ impl VMState {
             }
             None => return Err(ERR_NO_OBJECT)
         };
-        // If we are pushing a Function Return, reset the Base Pointer to the (current) top of the stack
-        if obj.object_type.id == self.get_type(PRIM_FN_RT).unwrap().id {
-            // We do not change anything else, since that is expected by the OpCodes to do
-            self.base_pointer = self.stack.len() as u64 +1;
-            
-        }
         if autoinc {
             self.inc_object_count(object)?;
         }
@@ -317,24 +314,6 @@ impl VMState {
             }
             None => return Err(ERR_NO_OBJECT)
         };
-
-        // If we are popping a Function Return, we want to set both the Base Pointer and the Program Pointer to where it states
-        if obj.object_type.id == self.get_type(PRIM_FN_RT).unwrap().id {
-            let mut base: u64 = 0;
-            let mut func: u64;
-            let val: &Vec<u8> = obj.get_data();
-            func = val[0] as u64;
-            func |= (val[1] as u64) << 8;
-            func |= (val[2] as u64) << 16;
-            func |= (val[3] as u64) << 24;
-            base |= (val[4] as u64) << 32;
-            base |= (val[5] as u64) << 40;
-            base |= (val[6] as u64) << 48;
-            base |= (val[7] as u64) << 56;
-            // TODO: Hmm, this may not be right?
-            self.base_pointer = base;
-            self.program_pointer = func;
-        }
 
         if autodec {
             self.dec_object_count(object)?;
@@ -367,19 +346,13 @@ impl VMState {
         return VMState::run(vm_ref);
     }
 
-    /* TODO: implement:
-        Structs         
-    */
-
-    // An example ByteCode is: 0x01 0x00| 0x00 | 0x01
-    // 0 byte: 
     pub fn run(vm_ref: VmRef) -> VmEmpty {
         vm_ref.borrow_mut().program_pointer = 0;
         vm_ref.borrow_mut().running = true;
+        
         while vm_ref.borrow().running {
             // Holds the raw OpCode call
             let mut op_code_value: u16 = vm_ref.borrow_mut().read_program_byte()? as u16;
-            
             op_code_value |= vm_ref.borrow_mut().read_program_byte()? as u16 >> 8;
 
             // Contains an OpCode to be used
@@ -411,14 +384,15 @@ impl VMState {
                 }
                 read_operand_description = !read_operand_description;
             }
+
             // Operands is now fully ready to be passed into the OpCode
             // Thus we run the OpCode
-
             (op_code.function)(vm_ref.clone(), operands)?;
 
             if vm_ref.borrow().err_code != u32::MAX && vm_ref.borrow().err_code != 0 {
                 return Err(vm_ref.borrow().err_code);
             }
+            
         }
         
         if vm_ref.borrow().err_code != 0 {

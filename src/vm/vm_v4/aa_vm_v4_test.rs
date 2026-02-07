@@ -383,7 +383,25 @@ mod tests {
             18, 0, 0b00000000, /* Direct, Byte */ 19, /* byte 19, if true */ /* Direct, Byte */ 16, /* byte 16, if false */
 
             255, 255, 255, 255,
-            0x00, 0x00, /* Ends the program */
+            /* byte 19 -> */ 0x00, 0x00, /* Ends the program */
+            255, 255, 255, 255,
+        ];
+
+        VMState::run_program(vm.clone(), program).unwrap();
+    }
+
+    #[test]
+    fn test_cal() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+        let program: Vec<u8> = vec![
+            19, 0, 0b00000000, 12, 0b00000000, 0, // Calls byte 10, return to byte 6
+
+            0x00, 0x00,
+            255, 255, 255, 255,
+            /* Byte 10 -> */
+            20, 0, // Returns
             255, 255, 255, 255,
         ];
 
