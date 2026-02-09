@@ -416,22 +416,23 @@ mod tests {
         // Creates a VM
         let vm: VmRef = VMState::default();
         // Gets the Byte ObjectType
-        let main: Vec<u8> = vec![
-            19, 0, 0b00000000, 1, // Calls function 0
-
-            0x00, 0x00,
-            255, 255, 255, 255,
-        ];
         let byte = vm.borrow().get_type(PRIM_BYTE).unwrap().clone();
-        let func = Function::new(vec![], Some(byte), vec![
+        let func = Function::new(vec![], Some(byte.clone()), vec![
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
             0x09, 0x00, /* Add */ // Should now have b10 on the stack 
 
             21, 0, 0b00000000, 1, // Returns
         ]);
+        let add_func = vm.borrow_mut().write_function(func).unwrap();
 
-        vm.borrow_mut().write_function(func).unwrap();
+        let main: Vec<u8> = vec![
+            19, 0, 0b00000000, add_func as u8, // Calls function 0
+
+            0x00, 0x00,
+            255, 255, 255, 255,
+        ];      
+
         VMState::run_program(vm.clone(), main).unwrap();
         let added = vm.borrow_mut().stack_pop(false).unwrap();
         let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
@@ -473,7 +474,6 @@ mod tests {
         assert_eq!(typ, "byte");
     }
 
-    // TODO: Why is this erroring on Error Code 3 (Type Mish)
     #[test]
     fn test_call_inner_function() {
         // Creates a VM
@@ -481,29 +481,33 @@ mod tests {
         // Gets the Byte ObjectType
 
         let byte = vm.borrow().get_type(PRIM_BYTE).unwrap().clone();
+        // Very basic function that returns `b2`
         let func_get_2= Function::new(vec![], Some(byte.clone()), vec![
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x02, /* 2 */            
-            21, 0, 0b00000000, 1, // Returns the 2
+            21, 0, 0b00000000, 1, // Returns the b2
         ]);
+
+        // Registers get_2
         let fnc_get_2 = vm.borrow_mut().write_function(func_get_2).unwrap();
 
+        // Adds 5b to a given byte
         let func_add_5= Function::new(vec![byte.clone()], Some(byte), vec![
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x03,
-            19, 0, 0b00000000, fnc_get_2 as u8, // Calls function get 2
+            19, 0, 0b00000000, fnc_get_2 as u8, // Calls function get_2
             0x09, 0x00, /* Add */ // Just adds 2 to the given arg
             0x09, 0x00, /* Add */ // Just adds 3 to the given arg
-            
 
             21, 0, 0b00000000, 1, // Returns the add
         ]);
 
         let fnc_add_5 = vm.borrow_mut().write_function(func_add_5).unwrap();
 
+        // the main function
         let main: Vec<u8> = vec![
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
-            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
-            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
-            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function add_5
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function add_5
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function add_5
             // Should now have 20 on the stack
 
             0x00, 0x00,

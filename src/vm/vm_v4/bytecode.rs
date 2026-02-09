@@ -292,17 +292,16 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
         }}),
 
         19 => Ok(OpCode { name: "Cal", count: 1, function: |vm, operands | -> VmEmpty {
-            let len = if vm.borrow().stack.len() == 0 { 0 } else { vm.borrow().stack.len() -1};
 
             let data_1 = &mut vm.borrow().program_pointer.to_be_bytes().to_vec();
             let data_2 = &mut vm.borrow().base_pointer.to_be_bytes().to_vec();
             let data_3 = &mut vm.borrow().function_pointer.to_be_bytes().to_vec();
-            
+
             let typ = vm.borrow().get_type(PRIM_FN_RT)?.clone();
             let obj = Object::new_object(typ, vm.clone())?;
             let mut data: Vec<u8> = vec![];
             let mut vm_mut = vm.borrow_mut();
-
+            
             
             data.append(data_1);
             data.append(data_2);
@@ -326,8 +325,9 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
 
             vm_mut.write_object(obj, data)?;
             vm_mut.stack_push(obj, false)?;
+            let stack_len = if vm_mut.stack.len() == 0 { 0 } else { (vm_mut.stack.len() -1) };
             vm_mut.program_pointer = 0;
-            vm_mut.base_pointer = len as u64;
+            vm_mut.base_pointer = (stack_len) as u64;
             for arg in args {
                 vm_mut.stack_push(arg, false)?;
             }
