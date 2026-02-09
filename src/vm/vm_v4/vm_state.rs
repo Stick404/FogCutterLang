@@ -1,11 +1,11 @@
 use std::{cell::RefCell, collections::{HashMap}, rc::Rc, u32, u64};
 
-use crate::vm::{vm_v4::{bytecode::*, object::{Object, ObjectType, PassBy}}};
+use crate::vm::vm_v4::{bytecode::*, function::{Function}, object::{Object, ObjectType, PassBy}};
 
 // TODO: make a "Get Object" method, and clean *everything* up
 
 pub type VmRef = Rc<RefCell<VMState>>;
-pub type VmResult<X> = Result<X, u32>;
+pub type VmResult<X> = Result<X, (u32, &'static str)>;
 pub type VmEmpty = VmResult<()>;
 
 #[derive(Debug)]
@@ -13,12 +13,13 @@ pub struct VMState {
     struct_list: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
     struct_ids: HashMap<String, u32>, // All known ObjectTypes
     objects: Vec<Option<Object>>,     // All Objects held within the VM, they can either be Empty, or Used
-    program: Vec<u8>,                 // The program this VMState will run, this is counted in allocated_size
+    pub program: Vec<Function>,           // All the functions within this program, function at index 0 is `main`
     max_memory: u64,                  // Max memory in bytes allocated to hold Objects
     allocated_size: u64,              // Current memory of bytes allocated (not recalculated)
     pub stack: Vec<u32>,              // Holds: Function Returns, Function Values, local Function Values
     pub base_pointer: u64,            // Points to the local "bottom" of the Stack
-    pub program_pointer: u64,         // Points the section in `program` to run
+    pub program_pointer: u64,         // Points the section in the function to run
+    pub function_pointer: u64,        // Points to the function to run in `program`
     pub running: bool,                // States if this VM is currently running or not
     pub err_code: u32,                // The error code of the program, if not 0 the program has errored
     pub jump_trueth: bool             // States if the VM's next jump should be Jump or not Jump
@@ -59,6 +60,7 @@ impl VMState {
             stack: vec![],
             base_pointer: 0,
             program_pointer: 0,
+            function_pointer: 0,
             running: false,
             err_code: u32::MAX,
             jump_trueth: false,
@@ -78,6 +80,7 @@ impl VMState {
             stack: vec![],
             base_pointer: 0,
             program_pointer: 0,
+            function_pointer: 0,
             running: false,
             err_code: u32::MAX,
             jump_trueth: false,
@@ -94,8 +97,8 @@ impl VMState {
         ObjectType::new_primitive(8, "long", &mut vm_ref);
 
         // This is used for Stack Calls, once a type of "function return" is ran
-        // This stores 2 longs (pointers). First one is to the point in the Program to jump back to, second one is the old Base Pointer
-        ObjectType::new_primitive(16, "function_return", &mut vm_ref);
+        // This stores 3 longs (pointers). First one is to the point in the Program to jump back to, second one is the old Base Pointer, and third is the original function
+        ObjectType::new_primitive(24, "function_return", &mut vm_ref);
         let vm_typ = vm_ref.borrow().get_type(2).unwrap();
 
         // This is used for Linked Lists/Arrays
@@ -122,7 +125,7 @@ impl VMState {
     }
 
     pub fn get_type_string(&self, string: &String) -> VmResult<Rc<ObjectType>> {
-        let x = self.struct_ids.get(string).ok_or(ERR_NO_TYPE)?;
+        let x = self.struct_ids.get(string).ok_or((ERR_NO_TYPE, "vm_state::get_type_string"))?;
         return self.get_type(*x);
     }
 
@@ -130,7 +133,7 @@ impl VMState {
         let typ = self.struct_list.get(index as usize);
         return match typ {
             Some(x) => Ok(x.clone()),
-            None => Err(ERR_NO_TYPE)
+            None => Err((ERR_NO_TYPE, "vm_state::get_type"))
         }
     }
 
@@ -156,7 +159,7 @@ impl VMState {
             self.objects.push(Option::Some(object));
             return Ok(self.objects.len() as u32 -1);
         }
-        return Err(ERR_OOM);
+        return Err((ERR_OOM, "vm_state::new_object_direct"));
     }
 
     // Returns true if the operation was a susccess 
@@ -168,14 +171,14 @@ impl VMState {
                     Some(y) => {
                         y.clear_data();
                         if !y.set_data(data) {
-                            return Err(ERR_OBJECT_WRITE);
+                            return Err((ERR_OBJECT_WRITE, "vm_state::write_object::set_data"));
                         }
                         Ok(())
                     }
-                    None => Err(ERR_NO_OBJECT)
+                    None => Err((ERR_NO_OBJECT, "vm_state::write_object"))
                 }
             }
-            None => Err(ERR_NO_OBJECT)
+            None => Err((ERR_NO_OBJECT, "vm_state::write_object"))
         }
     }
 
@@ -184,27 +187,27 @@ impl VMState {
         let set_object = match self.objects.get(index as usize) {
             Some(x) => match x {
                 Some(z) => z,
-                None => return Err(ERR_NO_OBJECT)
+                None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
             },
-            None => return  Err(ERR_NO_OBJECT)
+            None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
         };
 
         for (index, address) in objects.iter().enumerate() {
             let object = match self.objects.get(*address as usize) {
                 Some(x) => match x {
                     Some(z) => z,
-                    None => return Err(ERR_NO_OBJECT)
+                    None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
                 },
-                None => return Err(ERR_NO_OBJECT)
+                None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
             };
             let set_obj_typ = match set_object.object_type.types.get(index) {
                 Some(x) => x.clone(),
-                None => return Err(ERR_NO_TYPE)
+                None => return Err((ERR_NO_TYPE, "vm_state::write_object_typed"))
             };
 
             if object.object_type.id != set_obj_typ.id  {
                 // The types did not match up
-                return Err(ERR_TYPE_MISH);
+                return Err((ERR_TYPE_MISH, "vm_state::write_object_typed"));
             }
 
             match object.object_type.pass_by {
@@ -224,7 +227,7 @@ impl VMState {
     
         if data.len() != set_object.object_type.size as usize {
             // The data somehow did not match the size of ObjectType's size
-            return Err(ERR_OBJECT_WRITE); 
+            return Err((ERR_OBJECT_WRITE, "vm_state::write_object_typed")); 
         }
 
         self.write_object(index, data)?;
@@ -237,7 +240,7 @@ impl VMState {
             Some(x) => {
                 Ok(x.get_data())
             }
-            None => Err(ERR_NO_OBJECT)
+            None => Err((ERR_NO_OBJECT, "vm_state::read_object"))
         }
     }
 
@@ -247,7 +250,7 @@ impl VMState {
             Some(x) => {
                 Ok(& x.object_type)
             }
-            None => Err(ERR_NO_OBJECT)
+            None => Err((ERR_NO_OBJECT, "vm_state::read_object_type"))
         }
     }
 
@@ -259,7 +262,7 @@ impl VMState {
                 x.set_ref_count(count +1);
                 Ok(())
             }
-            None => Err(ERR_NO_OBJECT)
+            None => Err((ERR_NO_OBJECT, "vm_state::inc_object_count"))
         }
     }
 
@@ -278,7 +281,7 @@ impl VMState {
                 x.set_ref_count(count);
                 Ok(())
             }
-            None => Err(ERR_NO_OBJECT)
+            None => Err((ERR_NO_OBJECT, "vm_state::dec_object_count"))
         }
     }
 
@@ -289,10 +292,10 @@ impl VMState {
         let obj = match self.objects.get(object as usize) {
             Some(x) => { match x {
                     Some(z) => z,
-                    None => return Err(ERR_NO_OBJECT)
+                    None => return Err((ERR_NO_OBJECT, "vm_state::stack_push"))
                 }
             }
-            None => return Err(ERR_NO_OBJECT)
+            None => return Err((ERR_NO_OBJECT, "vm_state::stack_push"))
         };
         if autoinc {
             self.inc_object_count(object)?;
@@ -303,15 +306,15 @@ impl VMState {
     }
 
     pub fn stack_pop(&mut self, autodec: bool) -> VmResult<u32> {
-        let object = self.stack.pop().ok_or(ERR_STACK_EMPTY)?;
+        let object = self.stack.pop().ok_or((ERR_STACK_EMPTY, "vm_state::stack_pop"))?;
 
         let obj = match self.objects.get(object as usize) {
             Some(x) => {match x {
                     Some(z) => z,
-                    None => return Err(ERR_NO_OBJECT)
+                    None => return Err((ERR_NO_OBJECT, "vm_state::stack_pop"))
                 }
             }
-            None => return Err(ERR_NO_OBJECT)
+            None => return Err((ERR_NO_OBJECT, "vm_state::stack_pop"))
         };
 
         if autodec {
@@ -322,25 +325,29 @@ impl VMState {
 
     // Returns the Pointer to the object at index
     pub fn stack_local_var(&self, index: u64) -> VmResult<u32> {
-        let obj: &u32 = self.stack.get((self.base_pointer + index) as usize).ok_or(ERR_NO_OBJECT)?;
+        let tmp = self.base_pointer;
+        println!("reading: {index} and {tmp}");
+        let obj: &u32 = self.stack.get((self.base_pointer + index) as usize).ok_or((ERR_NO_OBJECT, "vm_state::stack_local_var"))?;
         
         return Ok(*obj);
     }
 
-    // Returns if it could write the program or not
-    pub fn write_program(&mut self, program: Vec<u8>) -> VmEmpty {
-        if self.max_memory < program.len() as u64 {
-            return Err(ERR_OOM);
+    // Returns if it could write the function or not
+    pub fn write_function(&mut self, function: Function) -> VmResult<u64> {
+        if self.max_memory < function.function.len() as u64 {
+            return Err((ERR_OOM, "vm_state::write_function"));
         }
-        self.allocated_size += program.len() as u64;
-        self.program.clear();
-        self.program.clone_from(&program);
-        return Ok(());
+        self.allocated_size += function.function.len() as u64;
+        self.program.push(function);
+    
+        return Ok((self.program.len() -1) as u64);
     }
 
-    pub fn run_program(vm_ref: VmRef, program: Vec<u8>) -> VmEmpty {
-        vm_ref.borrow_mut().write_program(program)?;
-        
+    // A quick shorthand for taking a program and running it
+    pub fn run_program(vm_ref: VmRef, func: Vec<u8>) -> VmEmpty {
+        // Declares the main function
+        let loc = vm_ref.borrow_mut().write_function(Function::new(vec![], None, func))?;
+        vm_ref.borrow_mut().function_pointer = loc;
         return VMState::run(vm_ref);
     }
 
@@ -378,7 +385,7 @@ impl VMState {
                         operand_value |= (vm_ref.borrow_mut().read_program_byte()? as u64) << count*8;
                     }
                     
-                    operands.get_mut( operads_len).ok_or(ERR_OPERAND)?.direct_value = operand_value;
+                    operands.get_mut( operads_len).ok_or((ERR_OPERAND, "vm_state::run"))?.direct_value = operand_value;
                 }
                 read_operand_description = !read_operand_description;
             }
@@ -388,19 +395,20 @@ impl VMState {
             (op_code.function)(vm_ref.clone(), operands)?;
 
             if vm_ref.borrow().err_code != u32::MAX && vm_ref.borrow().err_code != 0 {
-                return Err(vm_ref.borrow().err_code);
+                return Err((vm_ref.borrow().err_code, "vm_state::run"));
             }
             
         }
         
         if vm_ref.borrow().err_code != 0 {
-            return Err(ERR_PROGRAM_SHUT);
+            return Err((ERR_PROGRAM_SHUT, "vm_state::run"));
         }
         return Ok(());
     }
 
     pub fn read_program_byte(&mut self) -> VmResult<u8> {
-        let z = *self.program.get(self.program_pointer as usize).ok_or(ERR_PROGRAM_READ)?;
+        let z = *self.program.get(self.function_pointer as usize).ok_or((ERR_PROGRAM_READ, "vm_state::read_program_byte"))?.function
+                .get(self.program_pointer as usize).ok_or((ERR_PROGRAM_READ, "vm_state::read_program_byte"))?;
         self.program_pointer += 1;
         return Ok(z);
     }

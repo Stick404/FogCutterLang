@@ -2,7 +2,7 @@
 mod tests {
     use std::collections::VecDeque;
 
-    use crate::vm::vm_v4::{bytecode::{AddressMode, Operand, Size, get_opcode}, object::{Object, ObjectType, PassBy}, vm_state::{VMState, *}};
+    use crate::vm::vm_v4::{bytecode::{AddressMode, Operand, Size, get_opcode}, function::Function, object::{Object, ObjectType, PassBy}, vm_state::{VMState, *}};
     use crate::vm::vm_v4::vm_state::VmRef;
 
     #[test]
@@ -395,17 +395,20 @@ mod tests {
         // Creates a VM
         let vm: VmRef = VMState::default();
         // Gets the Byte ObjectType
-        let program: Vec<u8> = vec![
-            19, 0, 0b00000000, 10, // Calls byte 10, return to byte 6
+        let main: Vec<u8> = vec![
+            19, 0, 0b00000000, 0, // Calls function 0
 
             0x00, 0x00,
             255, 255, 255, 255,
-            /* Byte 10 -> */
-            20, 0, // Returns
-            255, 255, 255, 255,
         ];
 
-        VMState::run_program(vm.clone(), program).unwrap();
+        let func: Vec<u8> = vec![
+            20, 0 // A basic function that just returns
+        ];
+
+        vm.borrow_mut().write_function(Function::new(vec![], None, func)).unwrap();
+
+        VMState::run_program(vm.clone(), main).unwrap();
     }
 
     #[test]
@@ -413,24 +416,104 @@ mod tests {
         // Creates a VM
         let vm: VmRef = VMState::default();
         // Gets the Byte ObjectType
-        let program: Vec<u8> = vec![
-            19, 0, 0b00000000, 10, // Calls byte 10
+        let main: Vec<u8> = vec![
+            19, 0, 0b00000000, 1, // Calls function 0
 
             0x00, 0x00,
             255, 255, 255, 255,
-            /* Byte 10 -> */
+        ];
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap().clone();
+        let func = Function::new(vec![], Some(byte), vec![
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
             0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
             0x09, 0x00, /* Add */ // Should now have b10 on the stack 
 
-            21, 0, 0b00000000, 0, // Returns
-            255, 255, 255, 255,
-        ];
+            21, 0, 0b00000000, 1, // Returns
+        ]);
 
-        VMState::run_program(vm.clone(), program).unwrap();
+        vm.borrow_mut().write_function(func).unwrap();
+        VMState::run_program(vm.clone(), main).unwrap();
         let added = vm.borrow_mut().stack_pop(false).unwrap();
         let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
         assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![10]);
+        assert_eq!(typ, "byte");
+    }
+
+    #[test]
+    fn test_cal_ret_types() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap().clone();
+        let func = Function::new(vec![byte.clone()], Some(byte), vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            0x09, 0x00, /* Add */ // Just adds 5 to the given arg
+
+            21, 0, 0b00000000, 1, // Returns the add
+        ]);
+
+        let fnc = vm.borrow_mut().write_function(func).unwrap();
+
+        let main: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            19, 0, 0b00000000, fnc as u8, // Calls function 0
+            19, 0, 0b00000000, fnc as u8, // Calls function 0
+            19, 0, 0b00000000, fnc as u8, // Calls function 0
+            // Should now have 20 on the stack
+
+            0x00, 0x00,
+            255, 255, 255, 255,
+        ];
+        
+        VMState::run_program(vm.clone(), main).unwrap();
+        let added = vm.borrow_mut().stack_pop(false).unwrap();
+        let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![20]);
+        assert_eq!(typ, "byte");
+    }
+
+    // TODO: Why is this erroring on Error Code 3 (Type Mish)
+    #[test]
+    fn test_call_inner_function() {
+        // Creates a VM
+        let vm: VmRef = VMState::default();
+        // Gets the Byte ObjectType
+
+        let byte = vm.borrow().get_type(PRIM_BYTE).unwrap().clone();
+        let func_get_2= Function::new(vec![], Some(byte.clone()), vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x02, /* 2 */            
+            21, 0, 0b00000000, 1, // Returns the 2
+        ]);
+        let fnc_get_2 = vm.borrow_mut().write_function(func_get_2).unwrap();
+
+        let func_add_5= Function::new(vec![byte.clone()], Some(byte), vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x03,
+            19, 0, 0b00000000, fnc_get_2 as u8, // Calls function get 2
+            0x09, 0x00, /* Add */ // Just adds 2 to the given arg
+            0x09, 0x00, /* Add */ // Just adds 3 to the given arg
+            
+
+            21, 0, 0b00000000, 1, // Returns the add
+        ]);
+
+        let fnc_add_5 = vm.borrow_mut().write_function(func_add_5).unwrap();
+
+        let main: Vec<u8> = vec![
+            0x02, 0x00, /* PshPrim */ 0b00000000, /* Direct, Byte */ 0x05, /* 5 */
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
+            19, 0, 0b00000000, fnc_add_5 as u8, // Calls function 0
+            // Should now have 20 on the stack
+
+            0x00, 0x00,
+            255, 255, 255, 255,
+        ];
+        
+        VMState::run_program(vm.clone(), main).unwrap();
+        let added = vm.borrow_mut().stack_pop(false).unwrap();
+        let typ = vm.borrow().read_object_type(added).unwrap().id.clone();
+        assert_eq!(vm.borrow().read_object(added).unwrap(), &vec![20]);
         assert_eq!(typ, "byte");
     }
 
