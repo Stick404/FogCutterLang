@@ -2,7 +2,7 @@ use std::{time::{SystemTime, UNIX_EPOCH}, vec};
 
 use crate::vm::vm_v4::object::ObjectType;
 
-
+// This is used for the serlization of compiled programs
 pub struct Program {
     // Header info:
     program_start: u64, // When the program section starts (AKA: bytes from byte 0 in this file)

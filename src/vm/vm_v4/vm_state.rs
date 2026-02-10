@@ -99,7 +99,8 @@ impl VMState {
         // This is used for Stack Calls, once a type of "function return" is ran
         // This stores 3 longs (pointers). First one is to the point in the Program to jump back to, second one is the old Base Pointer, and third is the original function
         ObjectType::new_primitive(24, "function_return", &mut vm_ref);
-        let vm_typ = vm_ref.borrow().get_type(2).unwrap();
+
+        let vm_typ = vm_ref.borrow().get_type(PRIM_INT).unwrap();
 
         // This is used for Linked Lists/Arrays
         ObjectType::new_struct(vec![
