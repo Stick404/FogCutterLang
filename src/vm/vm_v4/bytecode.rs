@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_PROGRAM_READ, ERR_TYPE_MISH, PRIM_FN_RT, VmEmpty, VmRef, VmResult}};
+use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_OUT_OF_BOUND, ERR_PROGRAM_READ, ERR_TYPE_MISH, PRIM_FN_RT, VmEmpty, VmRef, VmResult}};
 // An instruction will be: `OpCode Operand[0..x]` x being the count in Operand
 // The ByteCode will be shaped as `Opcode byte 1, Opcode byte 2, Operand Descriptor[x], Operand[x]`
 // This means the smallest bytecode is 2 bytes, with no Operands. But each Operand costs a byte + its byte size (if direct)
@@ -105,11 +105,12 @@ pub struct Operand {
     - Cal    (ix1) Calls a function at at code ix1
     - Ret    () Removes all items on the stack until it reaches a "function_return"
     - RetRet (ix1) Acts like Ret, but leaves an object that was at index ix1
+
+    - RadSct (ix1) Reads index ix1 of the struct at the top of the stack
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
     return match opcode {
-        // TODO: Finish this!
         0 => Ok(OpCode { name: "End", count: 0, function: |vm, _| -> VmEmpty {
             vm.borrow_mut().running = false;
             vm.borrow_mut().err_code = 0;
@@ -315,9 +316,20 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             for typ in func_args{
                 let obj = vm_mut.stack_pop(false)?;
                 if vm_mut.read_object_type(obj)? == &typ {
-                    let obj_loc = vm_mut.read_object_type(obj)?;
+                    let obj_loc = vm_mut.read_object_type(obj)?.clone();
                     println!("With: {obj_loc:?}");
-                   args.push(obj); 
+                    match obj_loc.pass_by {
+                        PassBy::Reference => {
+                            args.push(obj);
+                            vm_mut.inc_object_count(obj)?;
+                        },
+                        PassBy::Value => {
+                            let obj_value = vm_mut.read_object(obj)?.clone();
+                            let cloned_object = Object::new_object(obj_loc, vm.clone())?;
+                            vm_mut.write_object(cloned_object, obj_value)?;
+                            args.push(cloned_object);
+                        }
+                    }
                 } else {
                     return Err((ERR_TYPE_MISH, "opCode::Cal"));
                 }
@@ -325,7 +337,7 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
 
             vm_mut.write_object(obj, data)?;
             vm_mut.stack_push(obj, false)?;
-            let stack_len = if vm_mut.stack.len() == 0 { 0 } else { (vm_mut.stack.len() -1) };
+            let stack_len = if vm_mut.stack.len() == 0 { 0 } else { vm_mut.stack.len() -1 };
             vm_mut.program_pointer = 0;
             vm_mut.base_pointer = (stack_len) as u64;
             for arg in args {
@@ -464,6 +476,40 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
                     vm_mut.dec_object_count(obj)?;
                 }
             }
+        }}),
+
+        22 => Ok(OpCode { name: "RadSct", count: 2, function: |vm, operands | -> VmEmpty {
+            let index = operands.get(0).ok_or((ERR_OPERAND, "opCode::RadSct"))?.direct_value;
+            let struct_obj = vm.borrow_mut().stack_pop(false)?;
+            let vm_val = vm.borrow();
+            let struct_data = vm_val.read_object(struct_obj)?;
+            let typ = vm.borrow().get_type(struct_obj)?;
+            
+
+            // If we try to read out of bounds, error
+            if index > typ.types.len() as u64 { return Err((ERR_OUT_OF_BOUND, "opCode::RadSct")); }
+
+            let reading_type = typ.types.get(index as usize).ok_or((ERR_OUT_OF_BOUND, "opCode::RadSct"))?;
+
+            let mut offset: usize = 0;
+            for i in 0..index {
+                offset += typ.types.get(i as usize).ok_or((ERR_OUT_OF_BOUND, "opCode::RadSct"))?.size as usize;
+            }
+
+            match reading_type.pass_by {
+                PassBy::Reference => {
+                    let data = struct_data[offset..offset+8].to_vec();
+                    vm.borrow_mut().stack_push(u32::from_be_bytes([data[0], data[1], data[2], data[3]]), true)?;
+                },
+                PassBy::Value => {
+                    let new_object = Object::new_object(reading_type.clone(), vm.clone())?;
+                    let data = struct_data[offset..offset+reading_type.size as usize].to_vec().clone();
+                    vm.borrow_mut().write_object(new_object, data)?;
+                    vm.borrow_mut().stack_push(new_object, false)?;
+                }
+            };
+
+            return Ok(())
         }}),
 
         _ => Err((ERR_NO_OP_CODE, "OpCode")),

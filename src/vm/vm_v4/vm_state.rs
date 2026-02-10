@@ -47,6 +47,7 @@ pub static ERR_PROGRAM_READ: u32 =  7; // When theres an error in Program readin
 pub static ERR_OPERAND     : u32 =  8; // When theres an error in reading Operands
 pub static ERR_NO_OP_CODE  : u32 =  9; // When an OpCode can not be found
 pub static ERR_PROGRAM_SHUT: u32 = 10; // When a program does not exit correctly
+pub static ERR_OUT_OF_BOUND: u32 = 11; // When tries to read a list/struct out of bounds
 
 impl VMState {
     pub fn new(memory: u64) -> VmRef {
