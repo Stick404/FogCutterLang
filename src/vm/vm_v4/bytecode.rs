@@ -301,39 +301,45 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
             let typ = vm.borrow().get_type(PRIM_FN_RT)?.clone();
             let obj = Object::new_object(typ, vm.clone())?;
             let mut data: Vec<u8> = vec![];
-            let mut vm_mut = vm.borrow_mut();
-            
             
             data.append(data_1);
             data.append(data_2);
             data.append(data_3);
 
-            vm_mut.function_pointer = operands.get(0).ok_or((ERR_OPERAND, "opCode::Cal"))?.direct_value;
-            let func_args = vm_mut.program.get(vm_mut.function_pointer as usize).ok_or((ERR_PROGRAM_READ, "opCode::Cal"))?.arg_type.clone();
+            vm.borrow_mut().function_pointer = operands.get(0).ok_or((ERR_OPERAND, "opCode::Cal"))?.direct_value;
+            let func_pointer = vm.borrow().function_pointer;
+            let func_args = vm.borrow_mut().program.get(
+                func_pointer as usize).ok_or((ERR_PROGRAM_READ, "opCode::Cal"))?.arg_type.clone();
             
             let mut args: Vec<u32> = vec![];
             println!("Calling function: {func_args:?}");
-            for typ in func_args{
-                let obj = vm_mut.stack_pop(false)?;
-                if vm_mut.read_object_type(obj)? == &typ {
-                    let obj_loc = vm_mut.read_object_type(obj)?.clone();
+            
+            for typ in func_args {
+                let obj = vm.borrow_mut().stack_pop(false)?;
+                
+                if vm.borrow().read_object_type(obj)? == &typ {
+                    let obj_loc = vm.borrow().read_object_type(obj)?.clone();
                     println!("With: {obj_loc:?}");
+                    
                     match obj_loc.pass_by {
                         PassBy::Reference => {
                             args.push(obj);
-                            vm_mut.inc_object_count(obj)?;
+                            vm.borrow_mut().inc_object_count(obj)?;
                         },
                         PassBy::Value => {
-                            let obj_value = vm_mut.read_object(obj)?.clone();
+                            let obj_value = vm.borrow().read_object(obj)?.clone();
                             let cloned_object = Object::new_object(obj_loc, vm.clone())?;
-                            vm_mut.write_object(cloned_object, obj_value)?;
+                            vm.borrow_mut().write_object(cloned_object, obj_value)?;
                             args.push(cloned_object);
                         }
                     }
+
                 } else {
                     return Err((ERR_TYPE_MISH, "opCode::Cal"));
                 }
             }
+
+            let mut vm_mut = vm.borrow_mut();
 
             vm_mut.write_object(obj, data)?;
             vm_mut.stack_push(obj, false)?;

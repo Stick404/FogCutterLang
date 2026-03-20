@@ -139,6 +139,27 @@ impl VMState {
         }
     }
 
+    // Returns the object at index
+    fn get_object_mut(&mut self, index: u32, loc: &'static str) -> VmResult<&mut Object> {
+        return match self.objects.get_mut(index as usize) {
+            Some(x) => match x {
+                Some(z) => Ok(z),
+                None => Err((ERR_NO_OBJECT, loc))
+            },
+            None => Err((ERR_NO_OBJECT, loc))
+        }
+    }
+
+    fn get_object(&self, index: u32, loc: &'static str) -> VmResult<&Object> {
+        return match self.objects.get(index as usize) {
+            Some(x) => match x {
+                Some(z) => Ok(z),
+                None => Err((ERR_NO_OBJECT, loc))
+            },
+            None => Err((ERR_NO_OBJECT, loc))
+        }
+    }
+
     // This pushs an Object to the first empty slot found
     // If Option is empty, then the VM could not allocate new space
     pub fn new_object_direct(&mut self, mut object: Object) -> VmResult<u32> {
@@ -166,42 +187,21 @@ impl VMState {
 
     // Returns true if the operation was a susccess 
     pub fn write_object(&mut self, index: u32, data: Vec<u8>) -> VmEmpty {
-    let obj = &mut self.objects.get_mut(index as usize);
-        return match obj {
-            Some(x) => {
-                match x {
-                    Some(y) => {
-                        y.clear_data();
-                        if !y.set_data(data) {
-                            return Err((ERR_OBJECT_WRITE, "vm_state::write_object::set_data"));
-                        }
-                        Ok(())
-                    }
-                    None => Err((ERR_NO_OBJECT, "vm_state::write_object"))
-                }
-            }
-            None => Err((ERR_NO_OBJECT, "vm_state::write_object"))
+        let y = self.get_object_mut(index, "vm_state::write_object::set_data")?;
+        y.clear_data();
+        if !y.set_data(data) {
+            return Err((ERR_OBJECT_WRITE, "vm_state::write_object::set_data"));
         }
+        return Ok(());
     }
 
     pub fn write_object_typed(&mut self, index: u32, objects: Vec<u32>) -> VmEmpty {
         let mut data: Vec<u8> = vec![];
-        let set_object = match self.objects.get(index as usize) {
-            Some(x) => match x {
-                Some(z) => z,
-                None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
-            },
-            None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
-        };
+        let set_object = self.get_object(index, "vm_state::write_object_typed")?;
 
         for (index, address) in objects.iter().enumerate() {
-            let object = match self.objects.get(*address as usize) {
-                Some(x) => match x {
-                    Some(z) => z,
-                    None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
-                },
-                None => return Err((ERR_NO_OBJECT, "vm_state::write_object_typed"))
-            };
+            let object = self.get_object(*address, "vm_state::write_object_typed")?;
+
             let set_obj_typ = match set_object.object_type.types.get(index) {
                 Some(x) => x.clone(),
                 None => return Err((ERR_NO_TYPE, "vm_state::write_object_typed"))
@@ -237,68 +237,40 @@ impl VMState {
     }
 
     pub fn read_object(&self, index: u32) -> VmResult<&Vec<u8>> {
-        let obj = &self.objects[index as usize];
-        return match obj {
-            Some(x) => {
-                Ok(x.get_data())
-            }
-            None => Err((ERR_NO_OBJECT, "vm_state::read_object"))
-        }
+        let obj = self.get_object(index, "vm_state::read_object")?;
+        return Ok(obj.get_data());
     }
 
     pub fn read_object_type(&self, index: u32) -> VmResult<&Rc<ObjectType>> {
-        let obj = &self.objects[index as usize];
-        return match obj {
-            Some(x) => {
-                Ok(& x.object_type)
-            }
-            None => Err((ERR_NO_OBJECT, "vm_state::read_object_type"))
-        }
+        let obj = self.get_object(index, "vm_state::read_object_type")?;
+        return Ok(&obj.object_type);
     }
 
     pub fn inc_object_count(&mut self, index: u32) -> VmEmpty {
-        let obj = &mut self.objects[index as usize];
-        return match obj {
-            Some(x) => {
-                let count = x.get_ref_count();
-                x.set_ref_count(count +1);
-                Ok(())
-            }
-            None => Err((ERR_NO_OBJECT, "vm_state::inc_object_count"))
-        }
+        let obj = self.get_object_mut(index, "vm_state::inc_object_count")?;
+        let count = obj.get_ref_count();
+        obj.set_ref_count(count +1);
+        return Ok(());
     }
 
-    // TODO: possibly have this scale `self.objects` down so it wont be a slow/small memory leak
+    // TODO: possibly have this scale `self.objects` down so it wont be a small memory leak
     pub fn dec_object_count(&mut self, index: u32) -> VmEmpty {
-        let obj = &mut self.objects[index as usize];
-        return match obj {
-            Some(x) => {
-                let count = x.get_ref_count() -1;
-                if count <= 0 {
-                    // Since the Object is getting removed, we want to remove it from the allocated size
-                    self.allocated_size -= x.object_type.size as u64;
-                    *obj = None;
-                    return Ok(());
-                }
-                x.set_ref_count(count);
-                Ok(())
-            }
-            None => Err((ERR_NO_OBJECT, "vm_state::dec_object_count"))
+        let x = self.get_object_mut(index, "vm_state::dec_object_count")?;
+        let count = x.get_ref_count() -1;
+        if count <= 0 {
+            // Since the Object is getting removed, we want to remove it from the allocated size
+            self.allocated_size -= x.object_type.size as u64;
+            self.objects[index as usize] = None;
+
+            return Ok(());
         }
+        x.set_ref_count(count);
+        Ok(())
     }
 
 
     // TBH, we have no clue what we are doing, just doing what seems right
-    // TODO: Make these all take either pointers or references to an Object, and have the real Objects live in Memory
     pub fn stack_push(&mut self, object: u32, autoinc: bool) -> VmEmpty {
-        let obj = match self.objects.get(object as usize) {
-            Some(x) => { match x {
-                    Some(z) => z,
-                    None => return Err((ERR_NO_OBJECT, "vm_state::stack_push"))
-                }
-            }
-            None => return Err((ERR_NO_OBJECT, "vm_state::stack_push"))
-        };
         if autoinc {
             self.inc_object_count(object)?;
         }
@@ -309,15 +281,6 @@ impl VMState {
 
     pub fn stack_pop(&mut self, autodec: bool) -> VmResult<u32> {
         let object = self.stack.pop().ok_or((ERR_STACK_EMPTY, "vm_state::stack_pop"))?;
-
-        let obj = match self.objects.get(object as usize) {
-            Some(x) => {match x {
-                    Some(z) => z,
-                    None => return Err((ERR_NO_OBJECT, "vm_state::stack_pop"))
-                }
-            }
-            None => return Err((ERR_NO_OBJECT, "vm_state::stack_pop"))
-        };
 
         if autodec {
             self.dec_object_count(object)?;

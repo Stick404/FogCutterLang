@@ -44,7 +44,6 @@ pub struct Object {
 }
 
 impl ObjectType {
-    // TODO: make the "constructors" have
     // Declares a "primitive," an ObjectType that does not depend on another type(s)
     pub fn new_primitive(size: u32, id: &str, vm: &mut VmRef) -> Rc<ObjectType> {
         let z = ObjectType { size: size, types: vec![], pass_by: PassBy::Value, id: id.to_string() };
