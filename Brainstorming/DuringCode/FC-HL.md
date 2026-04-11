@@ -18,8 +18,8 @@ fn int example(){
     // Declares type with "int"
     // All lines must end with ";"
     var mutableVariable: int = 2;
-    // Creates an immutable variable with "let"
-    let staticVariable: int = 10;
+    // Creates an immutable variable with "val"
+    val staticVariable: int = 10;
 
     // Reasignments are done like most languages
     mutableVariable = staticVariable;

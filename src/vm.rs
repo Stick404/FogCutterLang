@@ -5,3 +5,4 @@
 //pub mod vm_v3_test;mod vm_v3;
 
 pub mod vm_v4;
+pub mod vm_v5;

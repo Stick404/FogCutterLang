@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, rc::Rc};
 
-use crate::vm::vm_v4::vm_state::{VmRef, VmResult};
+use crate::vm::vm_v4::_vm_state::{VmRef, VmResult};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum PassBy {

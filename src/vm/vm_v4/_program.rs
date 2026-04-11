@@ -1,6 +1,6 @@
 use std::{time::{SystemTime, UNIX_EPOCH}, vec};
 
-use crate::vm::vm_v4::object::ObjectType;
+use crate::vm::vm_v4::_object::ObjectType;
 
 // This is used for the serlization of compiled programs
 pub struct Program {

@@ -2,8 +2,8 @@
 mod tests {
     use std::collections::VecDeque;
 
-    use crate::vm::vm_v4::{bytecode::{AddressMode, Operand, Size, get_opcode}, function::Function, object::{Object, ObjectType, PassBy}, vm_state::{VMState, *}};
-    use crate::vm::vm_v4::vm_state::VmRef;
+    use crate::vm::vm_v4::{_bytecode::{AddressMode, Operand, Size, get_opcode}, _function::Function, _object::{Object, ObjectType, PassBy}, _vm_state::{VMState, *}};
+    use crate::vm::vm_v4::_vm_state::VmRef;
 
     #[test]
     pub fn object_init_test() {

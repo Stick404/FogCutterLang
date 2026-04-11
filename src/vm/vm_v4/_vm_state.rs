@@ -1,8 +1,6 @@
 use std::{cell::RefCell, collections::{HashMap}, rc::Rc, u32, u64};
 
-use crate::vm::vm_v4::{bytecode::*, function::{Function}, object::{Object, ObjectType, PassBy}};
-
-// TODO: make a "Get Object" method, and clean *everything* up
+use crate::vm::vm_v4::{_bytecode::*, _function::{Function}, _object::{Object, ObjectType, PassBy}};
 
 pub type VmRef = Rc<RefCell<VMState>>;
 pub type VmResult<X> = Result<X, (u32, &'static str)>;

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::vm::vm_v4::{object::ObjectType};
+use crate::vm::vm_v4::{_object::ObjectType};
 
 #[derive(PartialEq, Debug)]
 pub struct Function {

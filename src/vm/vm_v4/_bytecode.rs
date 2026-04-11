@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::vm::vm_v4::{object::{Object, ObjectType, PassBy}, vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_OUT_OF_BOUND, ERR_PROGRAM_READ, ERR_TYPE_MISH, PRIM_FN_RT, VmEmpty, VmRef, VmResult}};
+use crate::vm::vm_v4::{_object::{Object, ObjectType, PassBy}, _vm_state::{ERR_NO_OBJECT, ERR_NO_OP_CODE, ERR_NO_TYPE, ERR_OPERAND, ERR_OUT_OF_BOUND, ERR_PROGRAM_READ, ERR_TYPE_MISH, PRIM_FN_RT, VmEmpty, VmRef, VmResult}};
 // An instruction will be: `OpCode Operand[0..x]` x being the count in Operand
 // The ByteCode will be shaped as `Opcode byte 1, Opcode byte 2, Operand Descriptor[x], Operand[x]`
 // This means the smallest bytecode is 2 bytes, with no Operands. But each Operand costs a byte + its byte size (if direct)
@@ -525,7 +525,7 @@ pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
 
 // Pops the top value off of the stack, returns error if it is not a valid primitive
 fn get_primitive_value_unsigned(vm: &VmRef) -> VmResult<(u64, Rc<ObjectType>)> {
-    let mut vm_mut: std::cell::RefMut<'_, super::vm_state::VMState> = vm.borrow_mut();
+    let mut vm_mut: std::cell::RefMut<'_, super::_vm_state::VMState> = vm.borrow_mut();
     let x1_obj = vm_mut.stack_pop(false)?;
 
     if vm_mut.is_basic_primitive(x1_obj) {
