@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use super::vm_state::VmError;
 // use super::vm_state::VmResult;
 
@@ -7,6 +9,7 @@ pub enum PassBy {
 	Reference, // Returns the pointer
 }
 
+#[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Clone)]
 pub enum Object {
 	BOOLEAN(bool),
@@ -22,9 +25,8 @@ pub enum Object {
 	FLOAT(f32),
 	DOUBLE(f64),
 
-	// TODO: Fuck. Meta Objects
-	//OBJECT_REFERNCE { types: Vec<&Object> },
-	//OBJECT_VALUE { types: Vec<&Object> },
+	OBJECT_REFERNCE(Rc<RefCell<Object>>),
+	OBJECT_VALUE(Box<Object>),
 
 	// UTF16 based strings
 	STRING(Vec<u16>),
@@ -49,7 +51,7 @@ impl TryFrom<Object> for bool {
 			SLONG(x) => Ok(x == 0),
 			FLOAT(x) => Ok(x == 0.0),
 			DOUBLE(x) => Ok(x == 0.0),
-			STRING(x) => Ok(x.len() != 0),
+			STRING(x) => Ok(!x.is_empty()),
 			_ => Err((0, "Object::castToBool")),
 		}
 	}
