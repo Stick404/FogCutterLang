@@ -13,7 +13,7 @@ pub struct VMState {
     struct_list: Vec<Rc<ObjectType>>, // All ObjectTypes known by the VM
     struct_ids: HashMap<String, u32>, // All known ObjectTypes
     objects: Vec<Option<Object>>,     // All Objects held within the VM, they can either be Empty, or Used
-    pub program: Vec<Function>,           // All the functions within this program, function at index 0 is `main`
+    pub program: Vec<Function>,       // All the functions within this program, function at index 0 is `main`
     max_memory: u64,                  // Max memory in bytes allocated to hold Objects
     allocated_size: u64,              // Current memory of bytes allocated (not recalculated)
     pub stack: Vec<u32>,              // Holds: Function Returns, Function Values, local Function Values
@@ -108,7 +108,7 @@ impl VMState {
             vm_typ.clone(), // The first int is for the type of the held Object
             vm_typ.clone(), // The second int is used for the held Object Pointer
             vm_typ  // The third int is used for the next Cell in the Linked List
-                                                  // If this is u32::MAX, then this is the end of the list
+                            // If this is u32::MAX, then this is the end of the list
         ], "linked_list".to_string(), PassBy::Reference, &mut vm_ref.clone());
         return vm_ref;
     }

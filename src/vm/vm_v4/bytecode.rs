@@ -107,6 +107,7 @@ pub struct Operand {
     - RetRet (ix1) Acts like Ret, but leaves an object that was at index ix1
 
     - RadSct (ix1) Reads index ix1 of the struct at the top of the stack
+    - WrtSct (ix1)
  */
 
 pub fn get_opcode(opcode: u16) -> VmResult<OpCode> {
