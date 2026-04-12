@@ -1,5 +1,4 @@
 use super::vm_state::VmError;
-// use super::vm_state::VmResult;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum PassBy {
