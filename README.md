@@ -1,6 +1,8 @@
 # FogCutterLang
 A lang made for Java and a Minecaraft Mod
 
+# MOVED TO https://codeberg.org/Stickia/FogCutterLang
+
 ## Current Timeline:
 * Finish Basic Planning ☑
 * Protype VM ☑
